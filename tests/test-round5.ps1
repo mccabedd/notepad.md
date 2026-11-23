@@ -100,7 +100,7 @@ T 'Ctrl+Alt+M back to Markdown preview' (J "return previewModeBtn.textContent + 
 Send-Key @('CTRL', 'ALT') 'b' 'KeyB' 0x42
 T 'Ctrl+Alt+B to BBCode preview' (J "return previewModeBtn.textContent") ((J "return previewModeBtn.textContent") -eq 'BB')
 $r = J "statusLang.click(); await new Promise(r=>setTimeout(r,100)); return [...ctxMenu.querySelectorAll('button')].map(b=>b.querySelector('.ctx-label').textContent + (b.querySelector('.ctx-gesture').textContent.includes('✓')?'*':'')).slice(0,4).join(' ; ')"
-T 'Status-bar language menu (auto-detect + every language, current ticked)' $r ($r -eq 'Auto-detect from file extension (Markdown) ; Markdown  (Markdown preview) ; Plain Text  (Markdown preview) ; BBCode  (BBCode preview)*')
+T 'Status-bar language menu (auto-detect + every language, current ticked)' $r ($r -eq 'Auto-detect from file extension (Markdown) ; Markdown  (Markdown preview) ; Plain Text ; BBCode  (BBCode preview)*')  # Plain Text shows its text as written (no Markdown preview)
 Shot 'language-menu'
 J "hideContextMenu(); return 1" | Out-Null
 $r = J "await openPath('$(P 'forum.bbcode')'); setLayoutMode('split-ep'); return previewModeBtn.textContent + '|' + getActive().langOverride"

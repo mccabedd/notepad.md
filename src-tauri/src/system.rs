@@ -592,8 +592,21 @@ fn sha256_of_digest(digest: Option<&str>) -> Option<String> {
     (hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit())).then(|| hex.to_ascii_lowercase())
 }
 
+/// Only this repository's release downloads: https, github.com, this owner/repository and the
+/// /releases/download/<tag>/<file> path (the fixed prefix pins all of these), with nothing that could
+/// make it mean somewhere else: no "..", no %-escapes (an escaped dot or slash), no backslashes, no
+/// query or fragment, and exactly a tag and a file name after the prefix. GitHub then redirects the
+/// download to its own storage; what arrives is accepted only if it matches the published SHA-256.
 fn asset_url_trusted(url: &str, test_mode: bool) -> bool {
-    url.starts_with(TRUSTED_ASSET_PREFIX) && !url.contains("..") || (test_mode && url.starts_with("file:///"))
+    if test_mode && url.starts_with("file:///") {
+        return true;
+    }
+    let Some(rest) = url.strip_prefix(TRUSTED_ASSET_PREFIX) else { return false };
+    let parts: Vec<&str> = rest.split('/').collect();
+    parts.len() == 2
+        && parts.iter().all(|p| !p.is_empty() && *p != "." && *p != "..")
+        && !rest.contains("..")
+        && !rest.chars().any(|c| matches!(c, '%' | '\\' | '?' | '#' | '@' | ':') || c.is_whitespace() || c.is_control())
 }
 
 #[derive(serde::Serialize)]
@@ -866,6 +879,9 @@ mod tests {
         assert!(!asset_url_trusted("https://github.com/mccabedd/notepad.md/releases/download/../../x/x.exe", false));
         assert!(!asset_url_trusted("https://github.com/mccabedd/notepad.md.evil.example/releases/download/v1/x.exe", false));
         assert!(!asset_url_trusted("https://github.com/mccabedd/notepad-md/releases/download/v1.2.0/NotePad-MD-v1.2.0-win-x64.exe", false), "the old repository name is no longer trusted");
+        for bad in ["v1/x%2e%2e/y.exe", "v1/..%2fx.exe", "v1\\x.exe", "v1/x.exe?y=1", "v1/x.exe#y", "v1/sub/x.exe", "v1/", "/x.exe", "v1/x .exe", "v1/x.exe@evil.example"] {
+            assert!(!asset_url_trusted(&format!("https://github.com/mccabedd/notepad.md/releases/download/{}", bad), false), "{}", bad);
+        }
         assert!(!asset_url_trusted("file:///C:/x.exe", false), "local files only in test mode");
         assert!(asset_url_trusted("file:///C:/x.exe", true));
     }

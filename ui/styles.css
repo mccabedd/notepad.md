@@ -2230,3 +2230,58 @@ summary:focus-visible,
   opacity: 0.35;
   cursor: default;
 }
+
+/* Hovering a link in the preview: its full address, with Open and Copy right beside it. */
+.link-pop {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: min(560px, calc(100vw - 16px));
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-alt);
+  color: var(--fg);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  font: 12.5px/1.4 "Segoe UI", sans-serif;
+}
+.link-pop .lp-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 6px;
+}
+.link-pop .lp-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.link-pop .lp-btn:hover {
+  background: var(--hover, rgba(128, 128, 128, 0.15));
+  color: var(--fg);
+}
+
+/* Plain Text tabs: the preview shows the text exactly as written (no Markdown), in the preview font. */
+.preview.plain-view {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+pre.plain-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+}

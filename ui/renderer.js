@@ -56,7 +56,7 @@ const MAX_FONT_SIZE = 40;
  * The ids must match the lang_* items of View > Language in src-tauri/src/main.rs. */
 const LANGS = {
   markdown: { label: 'Markdown', hljs: 'markdown', prose: true, render: 'markdown', exts: ['md', 'markdown'], group: 'text' },
-  plaintext: { label: 'Plain Text', hljs: null, prose: true, render: 'markdown', exts: ['txt'], group: 'text' },
+  plaintext: { label: 'Plain Text', hljs: null, prose: true, render: 'plain', exts: ['txt'], group: 'text' },
   bbcode: { label: 'BBCode', hljs: 'bbcode', prose: true, render: 'bbcode', exts: ['bbcode', 'bb'], group: 'text' },
   log: { label: 'Log File', hljs: 'logfile', render: 'code', exts: ['log', 'txt'], group: 'text' }, // colours levels, times, ids
   xml: { label: 'XML', hljs: 'xml', render: 'code', exts: ['xml'], group: 'data', validate: 'xml' },
@@ -208,7 +208,12 @@ function isMarkdownPreview(doc) {
 /** Previews you can type into: Markdown, and BBCode (turned back into BBCode as you type). */
 function isEditablePreview(doc) {
   const r = langInfo(doc).render;
-  return r === 'markdown' || r === 'bbcode';
+  return r === 'markdown' || r === 'bbcode' || r === 'plain';
+}
+
+/** The preview's contenteditable value: rich for Markdown and BBCode, plain text for Plain Text. */
+function previewEditableFor(mode) {
+  return mode === 'markdown' || mode === 'bbcode' ? 'true' : mode === 'plain' ? 'plaintext-only' : 'false';
 }
 
 function defaultLayoutFor(lang) {
@@ -273,8 +278,10 @@ function setupMarkdownEngine() {
   });
   // HTML the preview refused to show (scripts, frames...) goes back into the Markdown unchanged.
   turndownService.addRule('keptRawHtml', {
-    filter: (node) => node.nodeName === 'WBR' && node.hasAttribute('data-np-raw'),
-    replacement: (content, node) => node.getAttribute('data-np-raw'),
+    // (also an empty element the sanitiser had to clean, e.g. an <img> that lost an onerror)
+    filter: (node) => node.hasAttribute && node.hasAttribute('data-np-raw') && (node.nodeName === 'WBR' || !node.firstChild),
+    // (SVG and MathML blocks, see previewHtmlForMarkdown(), get blank lines round them)
+    replacement: (content, node) => (node.hasAttribute('data-np-block') ? '\n\n' + node.getAttribute('data-np-raw') + '\n\n' : node.getAttribute('data-np-raw')),
   });
   turndownService.addRule('codeCopyButton', {
     filter: (node) => node.nodeName === 'BUTTON' && node.classList.contains('code-copy-btn'),
@@ -374,15 +381,20 @@ function focusForTyping() {
   const go = () => {
     const doc = getActive();
     if (!doc) return;
-    if (layoutMode === 'preview-only' && preview.getAttribute('contenteditable') === 'true') {
+    if (layoutMode === 'preview-only' && preview.getAttribute('contenteditable') !== 'false') {
       if (document.activeElement !== preview) {
-        preview.focus();
-        const sel = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(preview);
-        range.collapse(false); // caret at the end (the only place in a new, empty tab)
-        sel.removeAllRanges();
-        sel.addRange(range);
+        const keepTop = preview.scrollTop;
+        preview.focus({ preventScroll: true });
+        // After a view switch: the caret where the editor caret was. Otherwise (a new, empty tab): the end.
+        if (!takePendingPreviewCaret(doc)) {
+          const sel = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(preview);
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        if (doc.content) preview.scrollTop = keepTop; // placing the caret must not move the view
       }
     } else if (layoutMode !== 'preview-only' && document.activeElement !== editor) {
       editor.focus();
@@ -396,7 +408,8 @@ function newUntitledDoc() {
   const active = getActive();
   let layout = settings.newTabView;
   if (layout === 'same') layout = active ? active.layoutMode : 'preview-only';
-  return makeDoc(null, '', { layoutMode: layout });
+  // Settings > Default new tab format; the tab keeps it (saved with the session) whatever the setting says later.
+  return makeDoc(null, '', { layoutMode: layout, lang: settings.newTabFormat === 'plaintext' ? 'plaintext' : 'markdown' });
 }
 
 /* ---------- theme ---------- */
@@ -488,11 +501,14 @@ function applyLayout(mode) {
 
 /** Changes the layout of the active tab only; other tabs keep their own. */
 function setLayoutMode(mode) {
-  const doc = getActive();
-  if (doc) doc.layoutMode = mode;
-  applyLayout(mode);
-  if (typeof refreshPreviewFindHighlights === 'function') refreshPreviewFindHighlights(false);
-  scheduleSessionSave();
+  // Switching view keeps the same part of the document in view (position-sync.js).
+  changeViewKeepingPlace(mode, () => {
+    const doc = getActive();
+    if (doc) doc.layoutMode = mode;
+    applyLayout(mode);
+    if (typeof refreshPreviewFindHighlights === 'function') refreshPreviewFindHighlights(false);
+    scheduleSessionSave();
+  });
 }
 
 function applySplit() {
@@ -1735,11 +1751,12 @@ function renderPreview(doc) {
   const mode = langInfo(doc).render;
   preview.classList.toggle('code-view', mode === 'code');
   preview.classList.toggle('bb-view', mode === 'bbcode');
+  preview.classList.toggle('plain-view', mode === 'plain');
   // Back on a tab whose text hasn't changed since it was shown: reuse the preview kept for it.
   const kept = doc.previewStash;
   doc.previewStash = null;
   if (kept && kept.content === doc.content && kept.path === doc.path && kept.render === mode && kept.gen === stashRenderGen) {
-    preview.setAttribute('contenteditable', mode === 'markdown' || mode === 'bbcode' ? 'true' : 'false');
+    preview.setAttribute('contenteditable', previewEditableFor(mode));
     preview.replaceChildren(kept.frag);
     schedulePreviewSpell(0);
     if (typeof refreshPreviewFindHighlights === 'function') refreshPreviewFindHighlights(false);
@@ -1758,6 +1775,10 @@ function renderPreview(doc) {
     preview.setAttribute('contenteditable', 'true'); // typing here writes BBCode back to the source
     preview.innerHTML = renderBBCode(doc.content);
     addCodeCopyButtons();
+  } else if (mode === 'plain') {
+    // Plain Text: the text exactly as written (no Markdown), and typed into as plain text.
+    preview.setAttribute('contenteditable', 'plaintext-only');
+    preview.textContent = doc.content;
   } else {
     preview.setAttribute('contenteditable', 'false');
     preview.innerHTML = '<pre><code class="hljs">' + highlightCode(doc.content, langInfo(doc).hljs) + '</code></pre>';
@@ -1837,10 +1858,43 @@ function syncFromEditor() {
   scheduleOutline();
 }
 
+/**
+ * The preview's HTML for turning back into Markdown. SVG and MathML have no Markdown form and the
+ * converter can't walk into MathML, so each one is handed over as a placeholder carrying its
+ * original HTML, which goes back into the source unchanged.
+ */
+function previewHtmlForMarkdown() {
+  if (!preview.querySelector('svg, math')) return preview.innerHTML;
+  const box = preview.cloneNode(true);
+  box.querySelectorAll('svg, math').forEach((el) => {
+    if (!box.contains(el)) return; // inside one already replaced
+    const w = document.createElement('wbr');
+    w.setAttribute('data-np-raw', el.outerHTML);
+    w.setAttribute('data-np-block', '');
+    el.replaceWith(w);
+  });
+  return box.innerHTML;
+}
+
+/** The text of a Plain Text preview (typed into as plain text), with Windows line breaks made \n. */
+function plainPreviewText() {
+  return preview.innerText.replace(/\r\n?/g, '\n');
+}
+
 function syncFromPreview() {
   const doc = getActive();
   if (!doc || !isEditablePreview(doc)) return;
-  doc.content = isMarkdownPreview(doc) ? turndownService.turndown(preview.innerHTML) : htmlToBBCode(preview);
+  const render = langInfo(doc).render;
+  let text;
+  try {
+    text = render === 'markdown' ? turndownService.turndown(previewHtmlForMarkdown()) : render === 'plain' ? plainPreviewText() : htmlToBBCode(preview);
+  } catch (e) {
+    // Never lose the source to a conversion that failed: it stays as it was.
+    console.error('preview to source', e);
+    flashFindStatus('This part of the preview could not be written back to the source: please make this change in the editor.', 6000);
+    return;
+  }
+  doc.content = text;
   editor.value = doc.content;
   addCodeCopyButtons();
   markDirty(doc);
@@ -1892,7 +1946,7 @@ function setDocLanguage(lang) {
 
 /** Preview the active tab as Markdown or as BBCode (sidebar button, Ctrl+Alt+M / Ctrl+Alt+B). */
 function setPreviewMode(mode) {
-  setDocLanguage(mode === 'bbcode' ? 'bbcode' : getActive() && getActive().lang === 'plaintext' && mode === 'markdown' ? 'plaintext' : 'markdown');
+  setDocLanguage(mode === 'bbcode' ? 'bbcode' : 'markdown');
 }
 
 function togglePreviewMode() {
@@ -1907,11 +1961,13 @@ function updatePreviewModeButton() {
   syncMenuChecks();
   const doc = getActive();
   const render = langInfo(doc).render;
-  previewModeBtn.textContent = render === 'bbcode' ? 'BB' : render === 'code' ? '{ }' : 'MD';
+  previewModeBtn.textContent = render === 'bbcode' ? 'BB' : render === 'code' ? '{ }' : render === 'plain' ? 'TXT' : 'MD';
   previewModeBtn.classList.toggle('overridden', !!(doc && doc.langOverride));
   previewModeBtn.title =
     render === 'code'
       ? langInfo(doc).label + ' file - click to choose how this tab is shown'
+      : render === 'plain'
+      ? 'Plain Text: shown exactly as written - click to preview as Markdown (Ctrl+Alt+M). Right-click for every language.'
       : 'Preview: ' + (render === 'bbcode' ? 'BBCode' : 'Markdown') + ' - click to preview as ' + (render === 'bbcode' ? 'Markdown (Ctrl+Alt+M)' : 'BBCode (Ctrl+Alt+B)') + '. Right-click for every language.';
 }
 
@@ -2333,7 +2389,7 @@ function removeDoc(id) {
   if (idx === -1) return;
   docs.splice(idx, 1);
   if (docs.length === 0) {
-    const doc = makeDoc(null, '');
+    const doc = newUntitledDoc(); // the last tab was closed: a blank one, like any new tab
     docs.push(doc);
     activeId = doc.id;
   } else if (id === activeId) {
@@ -3363,6 +3419,8 @@ function wireDomEvents() {
   wireFind();
   wireGutter();
   wireDiagnostics();
+  wirePreviewLinks();
+  wirePositionSync();
 
   // Alt pressed and released on its own (nothing else in between), while the menu bar is switched
   // off, shows it until a command is picked from it; Alt again, a click or another key hides it.
@@ -3710,7 +3768,7 @@ async function init() {
     /* none */
   }
   if (!docs.length) {
-    const blank = makeDoc(null, '');
+    const blank = newUntitledDoc();
     docs = [blank];
     activeId = blank.id;
   }

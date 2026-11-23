@@ -47,6 +47,13 @@ return JSON.stringify([docs.length, a.dirty, document.title]);
 
 # --- the new name in the app, a v1.2.0 settings export, "Use this copy" ---
 $regRoot = "Software\NotepadMD-Rebrand-$PID"
+# Your real registrations: read before and after, to show the test never touches them.
+function RealState {
+    $a = Get-ItemProperty 'HKCU:\Software\Classes\Applications\notepad.md.exe\shell\open\command' -ErrorAction SilentlyContinue
+    $p = Get-ItemProperty 'HKCU:\Software\Classes\NotepadMD.Document\shell\open\command' -ErrorAction SilentlyContinue
+    return "app=[$($a.'(default)')] prog=[$($p.'(default)')]"
+}
+$realBefore = RealState
 $env:NOTEPADMD_REG_ROOT = "$regRoot\Classes"
 Start-App $new $null
 Remove-Item Env:NOTEPADMD_REG_ROOT
@@ -91,8 +98,8 @@ $otherKey = Test-Path "$root\Applications\other-app.exe"
 $bat = (Get-ItemProperty "$root\.bat").'(default)'
 T 'Registry: commands point at notepad.md.exe, names say notepad.md' "cmd=$cmd verb=$verb verbCmd=$verbCmd friendly=$friendly" ($cmd -eq "`"$exeReal`" `"%1`"" -and $verbCmd -eq "`"$exeReal`" `"%1`"" -and $verb -eq 'Edit in notepad.md' -and $friendly -eq 'notepad.md')
 T 'Registry: the old copy''s stale key is removed; other programs and default apps are untouched' "oldKey=$oldKey otherKey=$otherKey bat=$bat" (-not $oldKey -and $otherKey -and $bat -eq 'batfile')
-$real = (Get-ItemProperty 'HKCU:\Software\Classes\Applications\notepad.md.exe' -ErrorAction SilentlyContinue)
-T 'Real registry not touched by this test' "real notepad.md.exe key=$([bool]$real)" (-not $real)
+$realAfter = RealState
+T 'Real registry not touched by this test (your own registrations are the same before and after)' "before=$realBefore after=$realAfter" ($realBefore -eq $realAfter)
 J "closeSettings(true); return 1" | Out-Null
 $proc = Get-Process -Id $script:proc.Id -ErrorAction SilentlyContinue
 T 'The running process is notepad.md' $proc.ProcessName ($proc.ProcessName -eq 'notepad.md')

@@ -98,7 +98,7 @@ function Start-App([string]$exe, [string]$file, [int]$port = 9333, [switch]$Keep
     $script:ws = New-Object System.Net.WebSockets.ClientWebSocket
     $script:ws.ConnectAsync([Uri]$wsUrl, [Threading.CancellationToken]::None).Wait()
     # wait for the app's init to finish
-    for ($i = 0; $i -lt 20; $i++) { if ((Eval "typeof statusLayout !== 'undefined' && !!statusLayout.textContent") -eq $true) { break }; Start-Sleep -Milliseconds 250 }
+    for ($i = 0; $i -lt 60; $i++) { if ((Eval "typeof statusLayout !== 'undefined' && !!statusLayout.textContent && typeof docs !== 'undefined' && docs.length > 0 && !!activeId") -eq $true) { break }; Start-Sleep -Milliseconds 250 }
 }
 
 function Cdp([string]$method, $params) {

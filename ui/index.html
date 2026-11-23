@@ -227,6 +227,8 @@
         </section>
         <section>
           <h3>New tabs</h3>
+          <label class="check"><input type="checkbox" data-s="syncScroll" /> Synchronise Edit/Preview scrolling (in split view, each side follows the other)</label>
+          <label class="row">Default new tab format <select data-s="newTabFormat"><option value="markdown">Markdown (.md)</option><option value="plaintext">Plain Text (.txt)</option></select></label>
           <label class="row">Default view <select data-s="newTabView"><option value="edit-only">Edit Only</option><option value="preview-only">Preview Only</option><option value="split-ep">Edit Left / Preview Right</option><option value="split-pe">Preview Left / Edit Right</option><option value="same">Same as the current tab</option></select></label>
           <p class="note">The default view is used for new tabs and for Markdown, text and BBCode files you open; code and config files always open in Edit Only. Font sizes are set under Editor and Preview; Ctrl+mouse wheel zooms one tab, and Ctrl+0 puts it back to 100%.</p>
         </section>
@@ -298,7 +300,7 @@
       </div>
       <div class="about-body">
         <img src="app-icon.png" alt="" width="64" height="64" />
-        <div class="about-name">notepad.md <span id="about-version">v1.3.0</span></div>
+        <div class="about-name">notepad.md <span id="about-version">v1.4.0</span></div>
         <a href="https://github.com/mccabedd/notepad.md" id="about-link">https://github.com/mccabedd/notepad.md</a>
         <div>Created by David McCabe</div>
         <button id="about-update" class="primary">Check for Updates</button>
@@ -335,6 +337,8 @@
   <script src="sanitize.js"></script>
   <script src="bbcode.js"></script>
   <script src="bbcode-edit.js"></script>
+  <script src="preview-links.js"></script>
+  <script src="position-sync.js"></script>
   <script src="find.js"></script>
   <script src="validate.js"></script>
   <script src="settings.js"></script>

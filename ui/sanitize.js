@@ -57,6 +57,11 @@ function sanitizeTree(root, keepRaw) {
     else if (n.attributes.length) fix.push(n);
   }
   for (const el of fix) {
+    // An empty element (an <img>, <br>...) that loses an attribute keeps its original HTML for the
+    // Markdown round trip, so editing elsewhere in the preview doesn't quietly rewrite it in the
+    // source. (One with text inside is written back cleaned: the text may have been edited.)
+    const original = keepRaw && !el.firstChild ? el.outerHTML : null;
+    const before = el.attributes.length;
     for (const attr of [...el.attributes]) {
       const name = attr.name.toLowerCase();
       if (name.startsWith('on') || name === 'srcdoc' || name === 'formaction' || name === 'is' || name === 'http-equiv') {
@@ -71,6 +76,7 @@ function sanitizeTree(root, keepRaw) {
         el.removeAttribute(attr.name);
       }
     }
+    if (original && el.attributes.length < before && !/data-np-raw/i.test(original)) el.setAttribute('data-np-raw', original);
   }
   for (const el of drop) {
     if (!el.parentNode || !root.contains(el)) continue; // already gone with a dropped ancestor

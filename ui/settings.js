@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS = {
   autoPair: true, // auto-close brackets and quotes in the editor
   windowsAccent: true, // follow the Windows accent colour (links, selected items, buttons)
   newTabView: 'preview-only', // or 'same' = same view as the tab you are on
+  newTabFormat: 'markdown', // new tabs are Markdown or Plain Text ('plaintext')
+  syncScroll: true, // split view: the editor and preview follow each other
   newTabFontSize: 14, // the size that counts as 100% when a tab is zoomed (no longer shown in Settings)
   editFontSize: 14, // editor text size at 100%, px
   previewFontSize: 14, // preview text size at 100%, px
@@ -69,6 +71,7 @@ function loadSettings(saved) {
   settings.previewFontSize = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(settings.previewFontSize)));
   if (![2, 4, 8].includes(settings.tabSize)) settings.tabSize = 4;
   if (!['Green', 'Orange', 'Red'].includes(settings.bookmarkColour)) settings.bookmarkColour = 'Green';
+  if (!['markdown', 'plaintext'].includes(settings.newTabFormat)) settings.newTabFormat = 'markdown';
   if (!['general', 'filetypes', 'validation'].includes(settings.settingsTab)) settings.settingsTab = 'general';
   settings.validateDelay = Math.min(5000, Math.max(200, Math.round(settings.validateDelay)));
   settings.tabFontSize = clampTabFont(settings.tabFontSize);
@@ -416,7 +419,8 @@ async function exportSettings() {
 /** Applies an exported settings object; the spelling dictionary is merged, not replaced. */
 function applyImportedSettings(data) {
   if (!data || data.kind !== 'settings' || typeof data.settings !== 'object') throw new Error('This is not a notepad.md settings file.');
-  loadSettings({ ...settings, ...data.settings });
+  // Files from before the new-tab format setting existed mean Markdown new tabs (the old behaviour).
+  loadSettings({ ...settings, ...data.settings, newTabFormat: data.settings.newTabFormat === undefined ? 'markdown' : data.settings.newTabFormat });
   if (['system', 'light', 'dark'].includes(data.theme)) {
     themeOverride = data.theme === 'system' ? null : data.theme;
     applyTheme();
@@ -492,6 +496,7 @@ async function refreshFileTypeStatus() {
   const exts = supportedExtensions();
   try {
     const s = await invoke('cmd_file_type_states', { exts });
+    ftOwner = s;
     const reg = new Set(s.registered);
     for (const box of ftBoxes()) box.checked = reg.has(box.dataset.ext);
     ftAll.checked = reg.size === exts.length;
@@ -512,10 +517,21 @@ async function refreshFileTypeStatus() {
 }
 
 let ftBusy = false;
+let ftOwner = null; // the last registry state read: { owner, other_exe }
 
 /** Applies a change straight away; the boxes then show what the registry really says. */
 async function setFileTypes(exts, enabled) {
   if (ftBusy || !exts.length) return;
+  // Another copy that still exists owns the shared Open with entry: taking it over changes what
+  // every ticked type opens, so ask first (a copy that was moved or deleted is taken over quietly).
+  if (enabled && ftOwner && ftOwner.owner === 'other') {
+    const me = await invoke('cmd_app_info').then((i) => i.exe).catch(() => 'this copy');
+    const ok = await dialogApi.ask('The file types are registered to another copy of notepad.md:\n' + ftOwner.other_exe + '\n\nUse this copy (' + me + ') instead? Every ticked file type will then open this copy.', { title: 'File Types', kind: 'warning' });
+    if (!ok) {
+      await refreshFileTypeStatus();
+      return;
+    }
+  }
   ftBusy = true;
   const boxes = [...ftBoxes(), ftAll];
   boxes.forEach((b) => (b.disabled = true));
@@ -543,6 +559,10 @@ function wireFileTypes() {
     setFileTypes([box.dataset.ext], want);
   });
   document.getElementById('ft-repair').addEventListener('click', async () => {
+    if (ftOwner && ftOwner.owner === 'other') {
+      const ok = await dialogApi.ask('The file types and the Explorer menu item are registered to another copy of notepad.md:\n' + ftOwner.other_exe + '\n\nPoint them at this copy instead?', { title: 'File Types', kind: 'warning' });
+      if (!ok) return;
+    }
     try {
       const r = await invoke('cmd_repair_registrations', { exts: supportedExtensions() });
       settingsMessage(

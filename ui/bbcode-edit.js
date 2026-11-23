@@ -218,9 +218,11 @@ const BB_TOOLBAR_TITLES = {
 
 /** Shows the BBCode tooltips (and turns off what BBCode doesn't have) on BBCode tabs. */
 function updateToolbarForLanguage(doc) {
-  const bb = !!doc && langInfo(doc).render === 'bbcode';
+  const render = doc ? langInfo(doc).render : 'markdown';
+  const bb = render === 'bbcode';
+  const plain = render === 'plain';
   const tb = document.getElementById('toolbar');
-  const want = bb ? 'bbcode' : 'markdown';
+  const want = bb ? 'bbcode' : plain ? 'plain' : 'markdown';
   if (!tb || tb.dataset.syntax === want) return;
   tb.dataset.syntax = want;
   tb.querySelectorAll('button[data-cmd], button[data-heading]').forEach((b) => {
@@ -228,8 +230,10 @@ function updateToolbarForLanguage(doc) {
     const h = b.dataset.heading ? +b.dataset.heading : 0;
     const key = b.dataset.cmd || 'h' + h;
     const bbTitle = h ? (h <= 3 ? 'Heading ' + h + '  [h' + h + ']...[/h' + h + ']' : 'BBCode has headings 1 to 3 only') : BB_TOOLBAR_TITLES[key];
-    b.title = bb && bbTitle ? bbTitle : b.dataset.mdTitle;
-    const off = bb && (key === 'checklist' || key === 'h4');
+    // Plain Text has no formatting: those buttons are off (indent, copy, paste and the rest still work).
+    const plainOff = plain && (h > 0 || ['bold', 'italic', 'strike', 'underline', 'table', 'code-block', 'image', 'checklist', 'ordered-list', 'bullet-list'].includes(key));
+    b.title = plainOff ? 'Plain Text has no formatting' : bb && bbTitle ? bbTitle : b.dataset.mdTitle;
+    const off = plainOff || (bb && (key === 'checklist' || key === 'h4'));
     b.disabled = off;
     b.classList.toggle('tb-off', off);
   });

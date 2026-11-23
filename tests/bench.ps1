@@ -24,7 +24,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
   while (-not $wsUrl -and $sw.ElapsedMilliseconds -lt 20000) { try { $p = (Invoke-RestMethod 'http://127.0.0.1:9333/json' -TimeoutSec 1) | Where-Object { $_.type -eq 'page' } | Select-Object -First 1; if ($p) { $wsUrl = $p.webSocketDebuggerUrl } } catch { Start-Sleep -Milliseconds 30 } }
   $script:ws = New-Object System.Net.WebSockets.ClientWebSocket
   $script:ws.ConnectAsync([Uri]$wsUrl, [Threading.CancellationToken]::None).Wait()
-  while ((Eval "typeof statusLayout !== 'undefined' && !!statusLayout.textContent") -ne $true) { Start-Sleep -Milliseconds 20 }
+  while ((Eval "typeof statusLayout !== 'undefined' && !!statusLayout.textContent && typeof docs !== 'undefined' && docs.length > 0 && !!activeId") -ne $true) { Start-Sleep -Milliseconds 20 }
   $starts += $sw.ElapsedMilliseconds
   if ($i -lt $Runs - 1) { try { $script:ws.Dispose() } catch {} }
 }

@@ -505,7 +505,13 @@ function renderDocHtml(doc, forFile) {
   const box = document.createElement('div');
   if (render === 'markdown') box.innerHTML = sanitizeHtml(marked_.parse(doc.content));
   else if (render === 'bbcode') box.innerHTML = renderBBCode(doc.content);
-  else box.innerHTML = '<pre><code class="hljs">' + highlightCode(doc.content, langInfo(doc).hljs) + '</code></pre>';
+  else if (render === 'plain') {
+    // Plain Text: the text exactly as written (no Markdown).
+    const pre = document.createElement('pre');
+    pre.className = 'plain-text';
+    pre.textContent = doc.content;
+    box.appendChild(pre);
+  } else box.innerHTML = '<pre><code class="hljs">' + highlightCode(doc.content, langInfo(doc).hljs) + '</code></pre>';
   if (render !== 'code' && window.hljs) {
     box.querySelectorAll('pre > code').forEach((code) => {
       const m = /language-([\w-]+)/.exec(code.className);
@@ -686,7 +692,7 @@ function renderOutline() {
   list.innerHTML = '';
   if (!doc || langInfo(doc).render !== 'markdown') {
     outlineHeadings = [];
-    list.innerHTML = '<div class="outline-empty">Headings are listed here for Markdown and text documents.</div>';
+    list.innerHTML = '<div class="outline-empty">Headings are listed here for Markdown documents.</div>';
     return;
   }
   outlineHeadings = headingsOf(doc.content);

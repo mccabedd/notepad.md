@@ -155,9 +155,11 @@ pub fn save_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
     };
     if let Err(e) = write_tmp() {
         let _ = fs::remove_file(&tmp);
-        // Some folders let you change a file but not create new ones; fall back to writing in place.
-        if e.kind() == std::io::ErrorKind::PermissionDenied && path.exists() {
-            return fs::write(path, bytes).map_err(|e| friendly_error(&e));
+        // Some folders let you change a file but not create new ones. Writing over the original
+        // there could leave it half-written if anything failed part-way, so the save is refused
+        // instead (the original stays exactly as it was) and Save As is suggested.
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            return Err("This folder doesn't allow new files to be created, which a safe save needs (the document is first written to a temporary file next to it). Your file has not been changed. Use Save As to save it somewhere else.".into());
         }
         return Err(friendly_error(&e));
     }
@@ -260,6 +262,29 @@ mod tests {
         #[allow(clippy::permissions_set_readonly_false)]
         perm.set_readonly(false);
         fs::set_permissions(&p, perm).unwrap();
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    /// A folder where the file may be changed but no new file may be created: the save is refused
+    /// (no writing over the original in place) and the original is left exactly as it was.
+    #[test]
+    fn folder_without_create_rights_never_overwrites_in_place() {
+        let d = scratch("nocreate");
+        let p = d.join("doc.txt");
+        fs::write(&p, b"original").unwrap();
+        let user = std::env::var("USERNAME").unwrap();
+        let ds = d.to_string_lossy().to_string();
+        // Deny "create files" (WD on a folder) for this folder only; the file keeps its own rights.
+        let icacls = |args: &[&str]| std::process::Command::new("icacls").args(args).output().unwrap();
+        let out = icacls(&[&ds, "/deny", &format!("{}:(WD)", user)]);
+        assert!(out.status.success(), "icacls: {}", String::from_utf8_lossy(&out.stdout));
+        assert!(fs::File::create(d.join("probe.txt")).is_err(), "the folder should refuse new files");
+        let e = save_file(&p, b"new contents");
+        icacls(&[&ds, "/remove:d", &user]);
+        let e = e.unwrap_err();
+        assert!(e.contains("Save As") && e.contains("has not been changed"), "{}", e);
+        assert_eq!(fs::read(&p).unwrap(), b"original");
+        assert_eq!(fs::read_dir(&d).unwrap().count(), 1, "no temporary file left behind");
         let _ = fs::remove_dir_all(&d);
     }
 
