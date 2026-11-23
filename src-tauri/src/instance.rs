@@ -1,4 +1,4 @@
-//! Single instance: launching NotePad-MD while it is already running hands any files to the
+//! Single instance: launching notepad.md while it is already running hands any files to the
 //! running window (which opens them as tabs and comes to the front) instead of opening a second
 //! window. Two windows would also fight over the same session.json.
 //!

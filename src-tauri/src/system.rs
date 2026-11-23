@@ -10,8 +10,8 @@ use winreg::RegKey;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const PROG_ID: &str = "NotepadMD.Document";
-const UPDATE_API: &str = "https://api.github.com/repos/mccabedd/notepad-md/releases/latest";
-const USER_AGENT: &str = "User-Agent: NotepadMD-Updater";
+const UPDATE_API: &str = "https://api.github.com/repos/mccabedd/notepad.md/releases/latest";
+const USER_AGENT: &str = "User-Agent: notepad.md-Updater";
 
 fn err<T>(r: io::Result<T>) -> Result<T, String> {
     r.map_err(|e| e.to_string())
@@ -74,7 +74,7 @@ fn open_command(exe: &str) -> String {
 }
 
 fn exe_file_name(exe: &PathBuf) -> String {
-    exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "notepad-md.exe".into())
+    exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "notepad.md.exe".into())
 }
 
 #[link(name = "shell32")]
@@ -87,7 +87,7 @@ fn notify_assoc_changed() {
     unsafe { SHChangeNotify(0x0800_0000, 0, std::ptr::null(), std::ptr::null()) };
 }
 
-/// Adds NotePad-MD to the "Open with" list of every extension (per user, no admin rights needed).
+/// Adds notepad.md to the "Open with" list of every extension (per user, no admin rights needed).
 /// Windows does not let apps make themselves the default silently; the user confirms that once
 /// in "Open with > Always" or Settings > Default apps.
 #[tauri::command]
@@ -98,12 +98,12 @@ pub fn cmd_register_file_types(exts: Vec<String>) -> Result<usize, String> {
     let root = classes_root()?;
 
     let (prog, _) = err(root.create_subkey(PROG_ID))?;
-    err(prog.set_value("", &"NotePad-MD document"))?;
+    err(prog.set_value("", &"notepad.md document"))?;
     err(err(prog.create_subkey("DefaultIcon"))?.0.set_value("", &format!("\"{}\",0", exe_s)))?;
     err(err(prog.create_subkey("shell\\open\\command"))?.0.set_value("", &cmd))?;
 
     let (app, _) = err(root.create_subkey(format!("Applications\\{}", exe_file_name(&exe))))?;
-    err(app.set_value("FriendlyAppName", &"NotePad-MD"))?;
+    err(app.set_value("FriendlyAppName", &"notepad.md"))?;
     err(err(app.create_subkey("shell\\open\\command"))?.0.set_value("", &cmd))?;
     let (types, _) = err(app.create_subkey("SupportedTypes"))?;
 
@@ -118,6 +118,7 @@ pub fn cmd_register_file_types(exts: Vec<String>) -> Result<usize, String> {
         err(k.set_value(PROG_ID, &""))?;
         n += 1;
     }
+    remove_stale_app_keys(&root, &exe_s);
     notify_assoc_changed();
     Ok(n)
 }
@@ -128,7 +129,7 @@ fn command_exe(cmd: &str) -> Option<String> {
     Some(rest[..rest.find('"')?].to_string())
 }
 
-/// Which copy of NotePad-MD a registry command belongs to, compared with this exe.
+/// Which copy of notepad.md a registry command belongs to, compared with this exe.
 #[derive(Debug, PartialEq)]
 enum Owner {
     /// Missing, or points at this exe.
@@ -161,7 +162,7 @@ fn delete_tree(root: &RegKey, key: &str) -> Result<(), String> {
     }
 }
 
-/// Removes this copy's "Open with" entries. Entries that belong to another copy of NotePad-MD
+/// Removes this copy's "Open with" entries. Entries that belong to another copy of notepad.md
 /// that still exists (a second portable copy) are left alone and reported; entries left by a copy
 /// that was moved or deleted are cleaned up. The extensions' own default programs are never touched.
 #[tauri::command]
@@ -175,7 +176,7 @@ pub fn cmd_unregister_file_types(exts: Vec<String>) -> Result<(), String> {
     }
     if let Owner::Other(p) = owner_of(read_command(&root, &format!("{}\\shell\\open", PROG_ID)), &exe_s) {
         notify_assoc_changed();
-        return Err(format!("The file types are registered to another copy of NotePad-MD:\n{}\n\nUnregister them from that copy.", p));
+        return Err(format!("The file types are registered to another copy of notepad.md:\n{}\n\nUnregister them from that copy.", p));
     }
     delete_tree(&root, PROG_ID)?;
     for ext in exts.iter().map(|e| e.trim_start_matches('.').to_ascii_lowercase()) {
@@ -218,7 +219,7 @@ pub fn cmd_file_types_status() -> Result<FileTypeStatus, String> {
 
 /* ---------------- one extension at a time (Settings > File Types) ---------------- */
 
-/// Whether `.ext` lists NotePad-MD in its "Open with" programs (HKCU only; defaults are never read or changed).
+/// Whether `.ext` lists notepad.md in its "Open with" programs (HKCU only; defaults are never read or changed).
 fn ext_registered(root: &RegKey, ext: &str) -> bool {
     root.open_subkey(format!(".{}\\OpenWithProgids", ext))
         .ok()
@@ -228,7 +229,7 @@ fn ext_registered(root: &RegKey, ext: &str) -> bool {
 
 #[derive(serde::Serialize)]
 pub struct FileTypeStates {
-    /// The extensions (from the list asked about) whose "Open with" lists NotePad-MD.
+    /// The extensions (from the list asked about) whose "Open with" lists notepad.md.
     registered: Vec<String>,
     /// Which copy the shared "Open with" entry opens: "us", "other" (another copy that exists),
     /// "stale" (a copy that was moved or deleted) or "none".
@@ -263,8 +264,8 @@ pub struct FileTypeChange {
     failed: Vec<(String, String)>,
 }
 
-/// Adds (`enabled`) or removes NotePad-MD from the "Open with" list of the given extensions.
-/// Only NotePad-MD's own value under `.ext\OpenWithProgids` changes, so the extension's default
+/// Adds (`enabled`) or removes notepad.md from the "Open with" list of the given extensions.
+/// Only notepad.md's own value under `.ext\OpenWithProgids` changes, so the extension's default
 /// program (for .bat, .cmd, .ps1, .py, .js: running the script) is never touched. Adding points the
 /// shared "Open with" entry at this copy; removing the last extension (of `all`) removes that entry
 /// too, unless it belongs to another copy that still exists. Explorer is told once per call.
@@ -281,11 +282,11 @@ pub fn cmd_set_file_types(exts: Vec<String>, enabled: bool, all: Vec<String>) ->
     if enabled {
         let cmd = open_command(&exe_s);
         let (prog, _) = err(root.create_subkey(PROG_ID))?;
-        err(prog.set_value("", &"NotePad-MD document"))?;
+        err(prog.set_value("", &"notepad.md document"))?;
         err(err(prog.create_subkey("DefaultIcon"))?.0.set_value("", &format!("\"{}\",0", exe_s)))?;
         err(err(prog.create_subkey("shell\\open\\command"))?.0.set_value("", &cmd))?;
         let (app, _) = err(root.create_subkey(&app_key))?;
-        err(app.set_value("FriendlyAppName", &"NotePad-MD"))?;
+        err(app.set_value("FriendlyAppName", &"notepad.md"))?;
         err(err(app.create_subkey("shell\\open\\command"))?.0.set_value("", &cmd))?;
         let (types, _) = err(app.create_subkey("SupportedTypes"))?;
         for ext in &exts {
@@ -301,7 +302,7 @@ pub fn cmd_set_file_types(exts: Vec<String>, enabled: bool, all: Vec<String>) ->
         }
     } else {
         if let Owner::Other(p) = owner_of(read_command(&root, &format!("{}\\shell\\open", PROG_ID)), &exe_s) {
-            return Err(format!("These file types are registered to another copy of NotePad-MD:\n{}\n\nChange them from that copy.", p));
+            return Err(format!("These file types are registered to another copy of notepad.md:\n{}\n\nChange them from that copy.", p));
         }
         let types = root.open_subkey_with_flags(format!("{}\\SupportedTypes", app_key), KEY_ALL_ACCESS).ok();
         for ext in &exts {
@@ -329,11 +330,73 @@ pub fn cmd_set_file_types(exts: Vec<String>, enabled: bool, all: Vec<String>) ->
             delete_tree(&root, PROG_ID)?;
         }
     }
+    remove_stale_app_keys(&root, &exe_s);
     notify_assoc_changed();
     Ok(FileTypeChange { changed, failed })
 }
 
-/* ---------------- Explorer right-click "Edit in NotePad-MD" ---------------- */
+/* ---------------- copies that were renamed, moved or deleted ---------------- */
+
+/// The FriendlyAppName values this app has written under `Applications\<exe file name>`
+/// (including its earlier names): how its own keys are recognised there.
+const OUR_APP_NAMES: [&str; 3] = ["notepad.md", "NotePad-MD", "Notepad MD"];
+
+/// Removes `Applications\<exe>` keys left by copies of this app whose exe no longer exists
+/// (renamed from notepad-md.exe, moved or deleted). A key is only removed when it carries one
+/// of this app's names AND its command points at a missing exe: keys of other programs, and of
+/// copies that still exist, are never touched. Returns the names of the keys removed.
+fn remove_stale_app_keys(root: &RegKey, exe: &str) -> Vec<String> {
+    let mut removed = Vec::new();
+    let Ok(apps) = root.open_subkey("Applications") else { return removed };
+    let names: Vec<String> = apps.enum_keys().filter_map(|k| k.ok()).collect();
+    for name in names {
+        let key = format!("Applications\\{}", name);
+        let friendly: Option<String> = root.open_subkey(&key).ok().and_then(|k| k.get_value("FriendlyAppName").ok());
+        if !friendly.map(|f| OUR_APP_NAMES.contains(&f.as_str())).unwrap_or(false) {
+            continue;
+        }
+        let cmd = read_command(root, &format!("{}\\shell\\open", key));
+        if cmd.is_some() && owner_of(cmd, exe) == Owner::Stale && delete_tree(root, &key).is_ok() {
+            removed.push(name);
+        }
+    }
+    removed
+}
+
+#[derive(serde::Serialize)]
+pub struct RepairResult {
+    /// File types now pointing at this copy.
+    repointed: usize,
+    /// The Explorer menu item was on and now opens this copy.
+    context_menu: bool,
+    /// `Applications\...` keys removed because their exe no longer exists.
+    removed: Vec<String>,
+}
+
+/// Settings > File Types > "Use this copy": after replacing or moving the exe, points the existing
+/// registrations (the ticked file types, and the Explorer menu item if it is on) at this exe and
+/// removes entries left by copies that no longer exist. It takes the registrations over from
+/// another copy, so it only ever runs when the user clicks it. Default apps are never changed.
+#[tauri::command]
+pub fn cmd_repair_registrations(exts: Vec<String>) -> Result<RepairResult, String> {
+    let root = classes_root()?;
+    let exe = exe_path()?.to_string_lossy().to_string();
+    let registered: Vec<String> = exts
+        .iter()
+        .map(|e| e.trim_start_matches('.').to_ascii_lowercase())
+        .filter(|e| valid_ext(e) && ext_registered(&root, e))
+        .collect();
+    let repointed = if registered.is_empty() { 0 } else { cmd_set_file_types(registered, true, exts)?.changed };
+    let context_menu = read_command(&root, CONTEXT_VERB).is_some();
+    if context_menu {
+        cmd_set_context_menu(true)?;
+    }
+    let removed = remove_stale_app_keys(&root, &exe);
+    notify_assoc_changed();
+    Ok(RepairResult { repointed, context_menu, removed })
+}
+
+/* ---------------- Explorer right-click "Edit in notepad.md" ---------------- */
 
 /// A classic shell verb on every file type (`*`), per user. On Windows 11 classic verbs appear
 /// under "Show more options" (Shift+F10); the compact menu only lists packaged apps.
@@ -345,13 +408,13 @@ pub fn cmd_set_context_menu(enabled: bool) -> Result<(), String> {
     if enabled {
         let exe = exe_path()?.to_string_lossy().to_string();
         let (verb, _) = err(root.create_subkey(CONTEXT_VERB))?;
-        err(verb.set_value("", &"Edit in NotePad-MD"))?;
+        err(verb.set_value("", &"Edit in notepad.md"))?;
         err(verb.set_value("Icon", &format!("\"{}\",0", exe)))?;
         err(err(verb.create_subkey("command"))?.0.set_value("", &open_command(&exe)))?;
     } else {
         let exe = exe_path()?.to_string_lossy().to_string();
         if let Owner::Other(p) = owner_of(read_command(&root, CONTEXT_VERB), &exe) {
-            return Err(format!("The Explorer menu item belongs to another copy of NotePad-MD:\n{}\n\nTurn it off from that copy.", p));
+            return Err(format!("The Explorer menu item belongs to another copy of notepad.md:\n{}\n\nTurn it off from that copy.", p));
         }
         delete_tree(&root, CONTEXT_VERB)?;
     }
@@ -463,7 +526,7 @@ fn sha256_file(path: &str) -> Result<String, String> {
 }
 
 /// Only release files from this repository are ever downloaded as an update.
-const TRUSTED_ASSET_PREFIX: &str = "https://github.com/mccabedd/notepad-md/releases/download/";
+const TRUSTED_ASSET_PREFIX: &str = "https://github.com/mccabedd/notepad.md/releases/download/";
 
 /// Tests point the updater at a local release file (file:///...) with NOTEPADMD_UPDATE_URL.
 /// Only local file: addresses are accepted there, so the variable can't redirect updates to the
@@ -594,7 +657,7 @@ pub async fn cmd_install_update(app: tauri::AppHandle, version: Option<String>) 
     }
     let asset_url = r.asset_url.ok_or("This release has no Windows download attached.")?;
     if !asset_url_trusted(&asset_url, test_mode) {
-        return Err("Refusing to download an update from outside the NotePad-MD releases on GitHub.".into());
+        return Err("Refusing to download an update from outside the notepad.md releases on GitHub.".into());
     }
     let expected_hash = sha256_of_digest(r.digest.as_deref())
         .ok_or("This release has no checksum to verify the download against, so it was not installed. Download it from the releases page instead.")?;
@@ -609,7 +672,7 @@ pub async fn cmd_install_update(app: tauri::AppHandle, version: Option<String>) 
     if let Err(e) = curl(&["-sSL", "--fail", "--proto", protos, "--proto-redir", "=https", "--max-time", "600", "-H", USER_AGENT, "-o", &staged_s, &asset_url]) {
         remove_quietly(&staged);
         if !exe.parent().map(|d| d.exists()).unwrap_or(false) || std::fs::metadata(exe.parent().unwrap()).map(|m| m.permissions().readonly()).unwrap_or(false) {
-            return Err(format!("Could not write to {}. Move NotePad-MD to a folder you can change, or download the update from the releases page.", exe.parent().unwrap().display()));
+            return Err(format!("Could not write to {}. Move notepad.md to a folder you can change, or download the update from the releases page.", exe.parent().unwrap().display()));
         }
         return Err(e);
     }
@@ -737,6 +800,47 @@ mod tests {
         assert!(cmd_file_type_states(all.clone()).unwrap().registered.is_empty());
         assert!(root.open_subkey(PROG_ID).is_err(), "last one removed: shared entry removed too");
 
+        // Renamed from notepad-md.exe (v1.2.0) to notepad.md.exe: the old registrations point at an
+        // exe that is gone. "Use this copy" points them here and removes only the app's own stale key.
+        let me = exe_path().unwrap().to_string_lossy().to_string();
+        let gone = "C:\\Nowhere\\notepad-md.exe";
+        let existing = format!("{}\\System32\\notepad.exe", std::env::var("SystemRoot").unwrap());
+        let app_key = |name: &str, friendly: &str, exe: &str| {
+            let (k, _) = root.create_subkey(format!("Applications\\{}", name)).unwrap();
+            k.set_value("FriendlyAppName", &friendly).unwrap();
+            k.create_subkey("shell\\open\\command").unwrap().0.set_value("", &open_command(exe)).unwrap();
+        };
+        app_key("notepad-md.exe", "NotePad-MD", gone); // the old copy: stale, ours -> removed
+        app_key("NotepadMD-v1.0.2-win-x64.exe", "Notepad MD", gone); // an even older name -> removed
+        app_key("NotePad-MD-v1.2.0-win-x64.exe", "NotePad-MD", &existing); // a copy that still exists -> kept
+        app_key("someone-else.exe", "Other App", gone); // not ours -> kept
+        let (prog, _) = root.create_subkey(format!("{}\\shell\\open\\command", PROG_ID)).unwrap();
+        prog.set_value("", &open_command(gone)).unwrap();
+        root.create_subkey(".md\\OpenWithProgids").unwrap().0.set_value(PROG_ID, &"").unwrap();
+        root.create_subkey(".bat\\OpenWithProgids").unwrap().0.set_value(PROG_ID, &"").unwrap();
+        root.create_subkey(format!("{}\\command", CONTEXT_VERB)).unwrap().0.set_value("", &open_command(gone)).unwrap();
+        assert_eq!(cmd_file_type_states(all.clone()).unwrap().owner, "stale");
+
+        let r = cmd_repair_registrations(all.clone()).unwrap();
+        assert_eq!(r.repointed, 2);
+        assert!(r.context_menu);
+        let mut removed = r.removed.clone();
+        removed.sort();
+        // (set_file_types already removed them; repair reports what was still left)
+        let keys: Vec<String> = root.open_subkey("Applications").unwrap().enum_keys().filter_map(|k| k.ok()).collect();
+        assert!(!keys.iter().any(|k| k == "notepad-md.exe" || k == "NotepadMD-v1.0.2-win-x64.exe"), "stale keys of this app removed: {:?}", keys);
+        assert!(keys.iter().any(|k| k == "NotePad-MD-v1.2.0-win-x64.exe"), "a copy that still exists is left alone");
+        assert!(keys.iter().any(|k| k == "someone-else.exe"), "another program's key is left alone");
+        let s = cmd_file_type_states(all.clone()).unwrap();
+        assert_eq!((s.owner.as_str(), s.registered.len()), ("us", 2));
+        assert_eq!(read_command(&root, &format!("{}\\shell\\open", PROG_ID)), Some(open_command(&me)));
+        assert_eq!(read_command(&root, CONTEXT_VERB), Some(open_command(&me)));
+        assert_eq!(root.open_subkey(".bat").unwrap().get_value::<String, _>("").unwrap(), "batfile", ".bat still runs as before");
+        let friendly: String = root.open_subkey(format!("Applications\\{}", exe_file_name(&exe_path().unwrap()))).unwrap().get_value("FriendlyAppName").unwrap();
+        assert_eq!(friendly, "notepad.md");
+        let shown: String = root.open_subkey(CONTEXT_VERB).unwrap().get_value("").unwrap();
+        assert_eq!(shown, "Edit in notepad.md");
+
         drop(root);
         hkcu.delete_subkey_all(&test_root).unwrap();
     }
@@ -755,12 +859,13 @@ mod tests {
 
     #[test]
     fn only_this_repositorys_releases_are_trusted() {
-        assert!(asset_url_trusted("https://github.com/mccabedd/notepad-md/releases/download/v1.0.8/NotepadMD-v1.0.8-win-x64.exe", false));
+        assert!(asset_url_trusted("https://github.com/mccabedd/notepad.md/releases/download/v1.3.0/notepad.md-v1.3.0-win-x64.exe", false));
         assert!(!asset_url_trusted("https://github.com/someone-else/notepad-md/releases/download/v1/x.exe", false));
         assert!(!asset_url_trusted("https://evil.example/NotepadMD.exe", false));
-        assert!(!asset_url_trusted("http://github.com/mccabedd/notepad-md/releases/download/v1/x.exe", false));
-        assert!(!asset_url_trusted("https://github.com/mccabedd/notepad-md/releases/download/../../x/x.exe", false));
-        assert!(!asset_url_trusted("https://github.com/mccabedd/notepad-md.evil.example/releases/download/v1/x.exe", false));
+        assert!(!asset_url_trusted("http://github.com/mccabedd/notepad.md/releases/download/v1/x.exe", false));
+        assert!(!asset_url_trusted("https://github.com/mccabedd/notepad.md/releases/download/../../x/x.exe", false));
+        assert!(!asset_url_trusted("https://github.com/mccabedd/notepad.md.evil.example/releases/download/v1/x.exe", false));
+        assert!(!asset_url_trusted("https://github.com/mccabedd/notepad-md/releases/download/v1.2.0/NotePad-MD-v1.2.0-win-x64.exe", false), "the old repository name is no longer trusted");
         assert!(!asset_url_trusted("file:///C:/x.exe", false), "local files only in test mode");
         assert!(asset_url_trusted("file:///C:/x.exe", true));
     }

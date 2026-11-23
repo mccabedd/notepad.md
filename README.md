@@ -1,4 +1,6 @@
-# NotePad-MD
+# notepad.md
+
+*Formerly called NotePad-MD (up to v1.2.0). The app, its exe and this repository were renamed to notepad.md to keep the name unique; settings, sessions and file-type registrations carry over.*
 
 A Notepad-like desktop app for viewing and editing Markdown, text, BBCode and code/config files, with a live, directly-editable Markdown preview.
 
@@ -9,7 +11,7 @@ Built with [Tauri](https://tauri.app) (Rust backend + the OS's built-in WebView2
 ### Files and tabs
 - New / Open / Save / Save As / **Save All** (`Ctrl+Alt+S`) / Delete File via the File menu; Open accepts several files at once. Files can also be **dragged onto the window** or passed on the command line. Files up to 100 MB open; files over 5 MB (big logs) open in Edit Only without spell checking. Files over about 300,000 characters (up to 4 MB) are coloured in the background: the text shows plainly while you type and the colours return a moment after you pause. Above 4 MB the editor shows plain text. Typing in multi-megabyte files is slow (a limit of the browser's text box).
 - **Recent Files** (File menu) lists the last 10 files you opened or saved; **Reopen Closed Tab** (`Ctrl+Shift+T`) brings back tabs you closed, including any unsaved text.
-- **Files changed by other programs** — NotePad-MD notices when an open file is changed, deleted or moved outside it. A tab without unsaved edits simply reloads; one with unsaved edits shows a bar asking whether to reload or keep your version. Save never silently overwrites a file someone else changed: it asks first. **File > Reload from Disk** re-reads a file on demand.
+- **Files changed by other programs** — notepad.md notices when an open file is changed, deleted or moved outside it. A tab without unsaved edits simply reloads; one with unsaved edits shows a bar asking whether to reload or keep your version. Save never silently overwrites a file someone else changed: it asks first. **File > Reload from Disk** re-reads a file on demand.
 - **Follow File (Tail)** (View menu) — for log files: new lines appear as the file grows, and the view stays at the end. The status bar shows *Following*; click it to stop.
 - **Print** (`Ctrl+P`), **Export as PDF** and **Export as HTML** (File menu) — the rendered Markdown / BBCode (or coloured code) on a clean white page. Exported HTML is a single file with its styles built in.
 - **Session restore** — closing the app never prompts; every open tab, including unsaved edits, untitled documents, pins, bookmarks, per-tab view and font size, comes back on the next launch. Files on disk only change when you save. (Can be turned off in Settings; closing then offers to save unsaved changes.)
@@ -17,7 +19,7 @@ Built with [Tauri](https://tauri.app) (Rust backend + the OS's built-in WebView2
 - **Tabs** — always shown. Unsaved tabs show a `*` before the name; the active tab has a red bar along its top. `Ctrl+Tab` / `Ctrl+Shift+Tab` cycle, `Ctrl+W` or middle-click closes, double-click the empty tab bar for a new document. When there are many tabs, the mouse wheel steps through them exactly like the ‹ › buttons.
 - **Drag tabs** to rearrange them (pinned tabs stay together at the left). The order is remembered.
 - **Rename a tab** by double-clicking its name: an untitled tab just gets the new name; a saved file is renamed on disk (in the same folder; it won't overwrite another file).
-- **One window** — opening a file while NotePad-MD is already running (double-click, *Open with*, command line) opens it as a tab in the running window instead of starting a second copy.
+- **One window** — opening a file while notepad.md is already running (double-click, *Open with*, command line) opens it as a tab in the running window instead of starting a second copy.
 - New documents are numbered: a new tab takes the lowest free number (*Untitled*, *Untitled 2*, …). Empty untitled tabs are kept across restarts too.
 - **New tab** — the little **+** tab after the last tab (always there, even when the tabs scroll), `Ctrl+N`, or double-click the empty part of the tab bar. The caret is already in the new tab (in the editor, or in the preview in Preview Only), so you can start typing straight away.
 - **Tab right-click menu** — Save, Save As, Save All, Reload from Disk, Pin/Unpin, Close, Close Others / Close All (both keep pinned tabs), Reopen Closed Tab, Copy Full Path.
@@ -76,8 +78,8 @@ Three pages: **General**, **File Types** and **Syntax Validation** (the last one
 Theme; use the Windows accent colour (on by default; links, selected items and buttons follow your Windows colour); reopen tabs on start; menu bar / toolbar / sidebar / status bar; outline panel; tab header font size; line numbers; word wrap; auto-close brackets and quotes; tab width; editor font, size, style (regular/bold/italic), text colour and background; preview font, size, style, text colour and background ("Use theme" returns a colour to the light/dark theme); default view for new tabs (each tab can still be zoomed with Ctrl+wheel; Ctrl+0 goes back to the editor and preview sizes); spell checking and language; Reset to defaults.
 
 - **Import / Export** — save all settings (plus your spelling dictionary) to a `.json` file and load them on another PC. Importing merges the dictionary.
-- **Edit in NotePad-MD** — a checkbox adds *Edit in NotePad-MD* (with the app's icon) to Explorer's right-click menu for every file (per user, no admin needed). On Windows 11 it's under *Show more options* / Shift+right-click, because the new compact menu only lists packaged (Store/MSIX) apps.
-- **File Types page** — one box per supported extension (three columns, alphabetical down each column), plus **All / None** (which also shows when only some are ticked). Ticking a box adds NotePad-MD to that extension's Windows "Open with" list straight away; unticking removes it (per user, no admin needed). The boxes always show what Windows really has, including changes made elsewhere and registrations by another copy of the app. Registering never changes a default app: scripts such as `.bat`, `.cmd`, `.ps1` still run when double-clicked. Names such as `Dockerfile` are recognised when opened but are not Windows extensions, so they are not listed. Windows only lets you pick the *default* app yourself, so **Open Windows Default Apps** takes you there (or right-click a file > Open with > Choose another app > NotePad-MD > Always).
+- **Edit in notepad.md** — a checkbox adds *Edit in notepad.md* (with the app's icon) to Explorer's right-click menu for every file (per user, no admin needed). On Windows 11 it's under *Show more options* / Shift+right-click, because the new compact menu only lists packaged (Store/MSIX) apps.
+- **File Types page** — one box per supported extension (three columns, alphabetical down each column), plus **All / None** (which also shows when only some are ticked). Ticking a box adds notepad.md to that extension's Windows "Open with" list straight away; unticking removes it (per user, no admin needed). The boxes always show what Windows really has, including changes made elsewhere and registrations by another copy of the app. Registering never changes a default app: scripts such as `.bat`, `.cmd`, `.ps1` still run when double-clicked. Names such as `Dockerfile` are recognised when opened but are not Windows extensions, so they are not listed. After moving or replacing the exe, **Use this copy** points the existing registrations at the copy you are running. Windows only lets you pick the *default* app yourself, so **Open Windows Default Apps** takes you there (or right-click a file > Open with > Choose another app > notepad.md > Always).
 
 ### Syntax validation (Settings > Syntax Validation)
 - **Full syntax checks**: JSON (strict), JSON with Comments, JSON5, JSON Lines, YAML, TOML, XML (well-formedness) and JavaScript (with the acorn parser).
@@ -89,8 +91,19 @@ Theme; use the Windows accent colour (on by default; links, selected items and b
 - **Large files**: up to 1 MB checked automatically; 1–5 MB only with *Also check files from 1 MB to 5 MB*; larger files only with **Search > Check Syntax Now**.
 - Other languages (HTML, PHP, SQL, C, Java...) are coloured but not checked: the status bar says *No syntax check*. JSON stops at the first error it cannot safely step over; YAML, TOML, XML, JavaScript and the structure checks report the first error.
 
+### Moving from NotePad-MD (v1.2.0 and earlier) to notepad.md
+Updates from NotePad-MD don't reach the renamed app, so replace the exe once by hand:
+1. Close NotePad-MD (File > Exit) and check in Task Manager that no `notepad-md` process is left.
+2. Back up `%APPDATA%m.notepadmd.app` (your tabs, unsaved text and settings live there; notepad.md keeps using this same folder).
+3. Put `notepad.md.exe` where you keep the app. Keep the old exe for now (rename it, e.g. `notepad-md.exe.bak`), in case you need to go back. Never run the old and new apps at the same time.
+4. Start `notepad.md.exe`: your tabs, unsaved text, bookmarks and settings should all be there.
+5. Open **Settings > File Types**. If it says the registrations open another copy, click **Use this copy**: the ticked file types and the *Edit in notepad.md* Explorer item then open the new exe, and entries left by copies that no longer exist are removed. Default apps are not changed.
+6. Once everything works, delete the old exe, and click **Use this copy** again if it is offered (it also tidies up the old exe's entry).
+
+To go back: close notepad.md, put the old exe back, start it, and click **Use this copy** in its own Settings (the app data folder is shared, so nothing else needs restoring).
+
 ### About and updates
-**About > About NotePad-MD** shows the version, the GitHub link and the author, plus **Check for Updates**. It asks GitHub for the latest release of `mccabedd/notepad-md`. If it's newer, it shows the release notes and asks first. It then downloads the `.exe` attached to the release and checks it: a valid program, the expected size, and GitHub's SHA-256 checksum. Finally it swaps it in for the running exe, restarts, and reopens every tab. If the app sits in a folder you can't write to, it says so and leaves the download in `%TEMP%\notepadmd-update`.
+**About > About notepad.md** shows the version, the GitHub link and the author, plus **Check for Updates**. It asks GitHub for the latest release of `mccabedd/notepad.md`. If it's newer, it shows the release notes and asks first. It then downloads the `.exe` attached to the release and checks it: a valid program, the expected size, and GitHub's SHA-256 checksum. Finally it swaps it in for the running exe, restarts, and reopens every tab. If the app sits in a folder you can't write to, it says so and leaves the download in `%TEMP%\notepadmd-update`.
 
 To publish an update: bump `version` in `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`, build, create a GitHub release tagged `vX.Y.Z`, and attach the `.exe`.
 
@@ -104,11 +117,10 @@ Running the built `.exe` needs nothing extra on a modern Windows install (WebVie
 ## Build and run
 
 ```bash
-cd src-tauri
-cargo build --release
+powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
-The resulting executable is at `src-tauri\target\release\notepad-md.exe` — a single standalone file, no installer or extra DLLs required.
+The resulting executable is `src-tauri\target\release\notepad.md.exe` — a single standalone file, no installer or extra DLLs required. (Cargo itself builds `notepad-md.exe`: a program built by Cargo cannot have a dot in its name, so `build.ps1` copies it to `notepad.md.exe`. `build.ps1 -Release` also makes the release download, `notepad.md-vX.Y.Z-win-x64.exe`, and prints its SHA-256.)
 
 For development with faster incremental builds (unoptimized, includes debug info):
 
@@ -141,7 +153,7 @@ cargo run
 
 ## Licence
 
-NotePad-MD is released under the [MIT licence](LICENSE). The bundled third-party components keep their own licences; their full texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+notepad.md is released under the [MIT licence](LICENSE). The bundled third-party components keep their own licences; their full texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Third-party components
 
@@ -156,7 +168,7 @@ NotePad-MD is released under the [MIT licence](LICENSE). The bundled third-party
 
 ## Project status and support
 
-NotePad-MD was created and reviewed with AI assistance.
+notepad.md was created and reviewed with AI assistance.
 
 Its source code was written for this project and does not copy source code from other applications. The third-party components it bundles are used under their own licences (listed above), and its icons and artwork were drawn for this project.
 

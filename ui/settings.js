@@ -336,7 +336,7 @@ async function checkForUpdates() {
     const ok = await dialogApi.ask(
       'Version ' + u.latest + ' is available (you have ' + u.current + ').\n\n' +
         (notes ? notes.slice(0, 600) + (notes.length > 600 ? '…' : '') + '\n\n' : '') +
-        'Download and install it now? NotePad-MD will close and reopen with your tabs.',
+        'Download and install it now? notepad.md will close and reopen with your tabs.',
       { title: 'Update available', kind: 'info', okLabel: 'Update now', cancelLabel: 'Later' }
     );
     if (!ok) {
@@ -362,7 +362,7 @@ function wireAbout() {
   document.getElementById('about-close').addEventListener('click', hideAbout);
   document.getElementById('about-link').addEventListener('click', (e) => {
     e.preventDefault();
-    invoke('cmd_open_url', { url: 'https://github.com/mccabedd/notepad-md' });
+    invoke('cmd_open_url', { url: 'https://github.com/mccabedd/notepad.md' });
   });
   aboutEl.addEventListener('click', (e) => {
     if (e.target === aboutEl) hideAbout();
@@ -388,7 +388,7 @@ function settingsMessage(text, isError) {
 
 function exportableSettings() {
   return {
-    app: 'NotePad-MD',
+    app: 'notepad.md',
     kind: 'settings',
     version: 1,
     settings: { ...settings },
@@ -401,8 +401,8 @@ function exportableSettings() {
 
 async function exportSettings() {
   const path = await dialogApi.save({
-    filters: [{ name: 'NotePad-MD settings', extensions: ['json'] }],
-    defaultPath: 'notepad-md-settings.json',
+    filters: [{ name: 'notepad.md settings', extensions: ['json'] }],
+    defaultPath: 'notepad.md-settings.json',
   });
   if (!path) return;
   try {
@@ -415,7 +415,7 @@ async function exportSettings() {
 
 /** Applies an exported settings object; the spelling dictionary is merged, not replaced. */
 function applyImportedSettings(data) {
-  if (!data || data.kind !== 'settings' || typeof data.settings !== 'object') throw new Error('This is not a NotePad-MD settings file.');
+  if (!data || data.kind !== 'settings' || typeof data.settings !== 'object') throw new Error('This is not a notepad.md settings file.');
   loadSettings({ ...settings, ...data.settings });
   if (['system', 'light', 'dark'].includes(data.theme)) {
     themeOverride = data.theme === 'system' ? null : data.theme;
@@ -440,7 +440,7 @@ async function importSettings() {
   const sel = await dialogApi.open({
     multiple: false,
     filters: [
-      { name: 'NotePad-MD settings', extensions: ['json'] },
+      { name: 'notepad.md settings', extensions: ['json'] },
       { name: 'All Files', extensions: ['*'] },
     ],
   });
@@ -467,7 +467,7 @@ function supportedExtensions() {
   return Object.keys(EXT_LANG).sort();
 }
 
-// Scripts Windows runs when you double-click them: registering only adds NotePad-MD to "Open with".
+// Scripts Windows runs when you double-click them: registering only adds notepad.md to "Open with".
 const SCRIPT_EXTS = new Set(['bat', 'cmd', 'ps1', 'psm1', 'psd1', 'py', 'pyw', 'js', 'mjs', 'cjs', 'sh', 'vbs']);
 
 function buildFileTypeGrid() {
@@ -476,7 +476,7 @@ function buildFileTypeGrid() {
   ftGrid.style.setProperty('--ft-rows', String(Math.ceil(exts.length / 3)));
   ftGrid.innerHTML = exts
     .map((e) => {
-      const tip = SCRIPT_EXTS.has(e) ? ' title="Adds NotePad-MD to Open with only. Double-clicking a .' + e + ' file still does what it did before."' : '';
+      const tip = SCRIPT_EXTS.has(e) ? ' title="Adds notepad.md to Open with only. Double-clicking a .' + e + ' file still does what it did before."' : '';
       return '<label class="check ft-item"' + tip + '><input type="checkbox" data-ext="' + e + '" /> .' + e + '</label>';
     })
     .join('');
@@ -499,10 +499,12 @@ async function refreshFileTypeStatus() {
     ftCount.textContent = reg.size + ' of ' + exts.length + ' registered';
     ftStatus.textContent =
       s.owner === 'other'
-        ? 'These open another copy of NotePad-MD (' + s.other_exe + '). Ticking a type points Open with at this copy instead.'
+        ? 'These open another copy of notepad.md (' + s.other_exe + '). Ticking a type points Open with at this copy instead.'
         : s.owner === 'stale'
         ? 'These were registered by a copy that has been moved or deleted (' + s.other_exe + '). Ticking a type points them at this copy; unticking cleans them up.'
         : '';
+    // After replacing or moving the exe: one click points the existing registrations here.
+    document.getElementById('ft-repair-row').hidden = !(s.owner === 'other' || s.owner === 'stale');
   } catch (e) {
     ftStatus.textContent = 'Could not read the registrations: ' + e;
   }
@@ -521,7 +523,7 @@ async function setFileTypes(exts, enabled) {
   try {
     const r = await invoke('cmd_set_file_types', { exts, enabled, all: supportedExtensions() });
     if (r.failed.length) settingsMessage('Could not change ' + r.failed.map(([e, why]) => '.' + e + ' (' + why + ')').join(', '), true);
-    else settingsMessage(exts.length === 1 ? '.' + exts[0] + (enabled ? ' now opens with NotePad-MD (Open with).' : ' no longer lists NotePad-MD.') : (enabled ? 'Registered ' : 'Removed ') + r.changed + ' file types.');
+    else settingsMessage(exts.length === 1 ? '.' + exts[0] + (enabled ? ' now opens with notepad.md (Open with).' : ' no longer lists notepad.md.') : (enabled ? 'Registered ' : 'Removed ') + r.changed + ' file types.');
   } catch (e) {
     settingsMessage(String(e), true);
   } finally {
@@ -539,6 +541,17 @@ function wireFileTypes() {
     const want = box.checked;
     box.checked = !want; // shown only once Windows has the change
     setFileTypes([box.dataset.ext], want);
+  });
+  document.getElementById('ft-repair').addEventListener('click', async () => {
+    try {
+      const r = await invoke('cmd_repair_registrations', { exts: supportedExtensions() });
+      settingsMessage(
+        'Open with now uses this copy for ' + r.repointed + ' file type(s)' + (r.context_menu ? ', and so does the Explorer menu item' : '') + (r.removed.length ? '. Removed ' + r.removed.length + ' entry(ies) left by copies that no longer exist.' : '.')
+      );
+    } catch (err) {
+      settingsMessage('Could not update the registrations: ' + err, true);
+    }
+    await refreshFileTypeStatus();
   });
   ftAll.addEventListener('change', (e) => {
     e.stopPropagation();
@@ -584,7 +597,7 @@ function wireSettingsTabs() {
   });
 }
 
-/* ---------- Explorer right-click "Edit in NotePad-MD" ---------- */
+/* ---------- Explorer right-click "Edit in notepad.md" ---------- */
 
 const ctxMenuBox = document.getElementById('explorer-menu');
 const ctxStatus = document.getElementById('explorer-menu-status');
@@ -604,7 +617,7 @@ async function refreshContextMenuStatus() {
 async function setContextMenu(enabled) {
   try {
     await invoke('cmd_set_context_menu', { enabled });
-    settingsMessage(enabled ? '"Edit in NotePad-MD" added to the Explorer right-click menu.' : '"Edit in NotePad-MD" removed from the Explorer right-click menu.');
+    settingsMessage(enabled ? '"Edit in notepad.md" added to the Explorer right-click menu.' : '"Edit in notepad.md" removed from the Explorer right-click menu.');
   } catch (e) {
     settingsMessage('Could not change the right-click menu: ' + e, true);
   }

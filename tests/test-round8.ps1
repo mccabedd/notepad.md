@@ -212,7 +212,7 @@ T 'Layout, preview mode, theme and spelling ticks' $r ($r -eq 'edit=False split=
 
 # ---------- version ----------
 $r = J "await showAbout(); await new Promise(r=>setTimeout(r,300)); return aboutEl.querySelector('.about-name').textContent.trim()"
-T "About shows v$AppVersion" $r ($r -eq "NotePad-MD v$AppVersion")
+T "About shows v$AppVersion" $r ($r -eq "notepad.md v$AppVersion")
 
 Stop-App
 

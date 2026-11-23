@@ -13,7 +13,7 @@ $w = $work.Replace('\', '/')
 # Startup: process start -> page ready (5 cold-ish runs)
 $starts = @()
 for ($i = 0; $i -lt $Runs; $i++) {
-  Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($sp) -and $_.ProcessName -match '^(notepad-md|np[0-9]+)$' } | Stop-Process -Force
+  Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($sp) -and $_.ProcessName -match '^(notepad-md|notepad.md|np[0-9]+)$' } | Stop-Process -Force
   Start-Sleep -Milliseconds 1200
   $env:NOTEPADMD_DATA_DIR = "$sp\appdata"; Remove-Item "$sp\appdata\session.json" -ErrorAction SilentlyContinue
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9333'; $env:WEBVIEW2_USER_DATA_FOLDER = "$sp\wv2data"

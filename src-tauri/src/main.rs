@@ -292,6 +292,7 @@ fn main() {
             system::cmd_file_types_status,
             system::cmd_file_type_states,
             system::cmd_set_file_types,
+            system::cmd_repair_registrations,
             system::cmd_open_default_apps,
             system::cmd_system_accent,
             system::cmd_set_context_menu,
@@ -587,7 +588,7 @@ fn main() {
                 app,
                 "About",
                 true,
-                &[&MenuItem::with_id(app, "about", "About NotePad-MD...", true, None::<&str>)?],
+                &[&MenuItem::with_id(app, "about", "About notepad.md...", true, None::<&str>)?],
             )?;
 
             app.manage(MenuChecks(Mutex::new(checks)));

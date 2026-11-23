@@ -1,7 +1,7 @@
 param([string]$Exe, [string]$Label = '')
 # Responsiveness benchmark across document sizes (10 KB, 100 KB, 1 MB, 5 MB Markdown):
 # open time, typing latency (edit-only and split view), preview render, tab switch, session save,
-# and memory (NotePad-MD plus its WebView2 processes). Prints one table; numbers are medians.
+# and memory (notepad.md plus its WebView2 processes). Prints one table; numbers are medians.
 $sp = . "$PSScriptRoot\testdir.ps1"
 . "$PSScriptRoot\harness.ps1"
 function J([string]$js) { Eval "(async () => { try { $js } catch (e) { return 'EXC ' + e.message; } })()" }

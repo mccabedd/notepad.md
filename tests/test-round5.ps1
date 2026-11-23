@@ -40,7 +40,7 @@ T 'Settings default-view list uses the same order' $r ($r -eq 'edit-only,preview
 
 # ---------- About ----------
 $r = J "await showAbout(); return [!aboutEl.classList.contains('hidden'), aboutEl.querySelector('.about-name').textContent.trim(), document.getElementById('about-link').textContent, aboutEl.querySelector('.about-body').textContent.includes('Created by David McCabe'), document.getElementById('about-update').textContent].join('|')"
-T 'About shows name/version, link, author, Check for Updates' $r ($r -eq "true|NotePad-MD v$AppVersion|" + 'https://github.com/mccabedd/notepad-md|true|Check for Updates')
+T 'About shows name/version, link, author, Check for Updates' $r ($r -eq "true|notepad.md v$AppVersion|" + 'https://github.com/mccabedd/notepad.md|true|Check for Updates')
 Shot 'about'
 Send-Key @() 'Escape' 'Escape' 0x1B
 T 'Esc closes About' (J "return aboutEl.classList.contains('hidden')") ((J "return aboutEl.classList.contains('hidden')") -eq $true)
@@ -60,7 +60,7 @@ $json = Get-Content $exportPath -Raw | ConvertFrom-Json
 T 'Export writes a settings file' "kind=$($json.kind) font=$($json.settings.editFont) words=$($json.spell.userWords -join ',')" ($json.kind -eq 'settings' -and $json.settings.editFont -eq 'Cascadia Code' -and ($json.spell.userWords -contains 'notepadmd'))
 T 'Import restores settings + dictionary and applies them' $r ($r -eq 'Consolas|true|14 -> Cascadia Code|false|17|true|true')
 $r = J "try { applyImportedSettings({hello:1}); return 'accepted'; } catch (e) { return e.message; }"
-T 'Import rejects a non-settings file' $r ($r -eq 'This is not a NotePad-MD settings file.')
+T 'Import rejects a non-settings file' $r ($r -eq 'This is not a notepad.md settings file.')
 J "openSettings(); return 1" | Out-Null
 function WaitDialog { for ($i = 0; $i -lt 20; $i++) { if (Has-Dialog) { return $true }; Start-Sleep -Milliseconds 250 }; return $false }
 J "document.getElementById('settings-export').click(); return 1" | Out-Null
@@ -78,13 +78,13 @@ $exeReal = (Get-Item $Exe).FullName
 $cmd = (Get-ItemProperty "$root\NotepadMD.Document\shell\open\command" -ErrorAction SilentlyContinue).'(default)'
 $mdProg = (Get-Item "$root\.md\OpenWithProgids" -ErrorAction SilentlyContinue).Property -contains 'NotepadMD.Document'
 $psProg = (Get-Item "$root\.ps1\OpenWithProgids" -ErrorAction SilentlyContinue).Property -contains 'NotepadMD.Document'
-$types = @((Get-Item "$root\Applications\notepad-md.exe\SupportedTypes" -ErrorAction SilentlyContinue).Property).Count
+$types = @((Get-Item "$root\Applications\notepad.md.exe\SupportedTypes" -ErrorAction SilentlyContinue).Property).Count
 $expected = [int](J "return supportedExtensions().length")
 T 'Register writes ProgID + Open-with entries for every type' "msg=$r cmd=$cmd md=$mdProg ps1=$psProg types=$types/$expected" ($cmd -eq "`"$exeReal`" `"%1`"" -and $mdProg -and $psProg -and $types -eq $expected -and $r -eq "Registered $expected file types.|$expected of $expected registered")
 $real = Test-Path 'HKCU:\Software\Classes\NotepadMD.Document'
 T 'Real file associations untouched by the test' "real ProgID exists=$real" (-not $real)
 $r = J "await setFileTypes(supportedExtensions(), false); return ftCount.textContent"
-$left = (Test-Path "$root\NotepadMD.Document") -or ((Get-Item "$root\.md\OpenWithProgids" -ErrorAction SilentlyContinue).Property -contains 'NotepadMD.Document') -or (Test-Path "$root\Applications\notepad-md.exe")
+$left = (Test-Path "$root\NotepadMD.Document") -or ((Get-Item "$root\.md\OpenWithProgids" -ErrorAction SilentlyContinue).Property -contains 'NotepadMD.Document') -or (Test-Path "$root\Applications\notepad.md.exe")
 T 'Unregister removes them again' "status=$r leftovers=$left" ($r -like '0 of * registered' -and -not $left)
 Shot 'settings-files'
 J "closeSettings(); return 1" | Out-Null
@@ -122,7 +122,7 @@ T 'Preview mode choice survives a restart' "exited=$exited $r" ($exited -and $r 
 $rel = "$sp\update-test"; Remove-Item $rel -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory $rel | Out-Null
 $exeUrl = 'file:///' + ("$rel\new.exe").Replace('\', '/')
 function Write-Release([string]$tag, [string]$digest, [long]$size) {
-    $o = @{ tag_name = $tag; html_url = 'https://github.com/mccabedd/notepad-md/releases/tag/' + $tag; body = "Test release $tag"; assets = @(@{ name = 'NotepadMD-' + $tag + '-win-x64.exe'; browser_download_url = $exeUrl; size = $size; digest = $digest }) }
+    $o = @{ tag_name = $tag; html_url = 'https://github.com/mccabedd/notepad.md/releases/tag/' + $tag; body = "Test release $tag"; assets = @(@{ name = 'notepad.md-' + $tag + '-win-x64.exe'; browser_download_url = $exeUrl; size = $size; digest = $digest }) }
     [IO.File]::WriteAllText("$rel\release.json", ($o | ConvertTo-Json -Depth 5))
 }
 Stop-App
@@ -145,13 +145,13 @@ Stop-App
 
 # ---------- updates: full install on a COPY of the app ----------
 $appDir = "$sp\update-app"; Remove-Item $appDir -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory $appDir | Out-Null
-Copy-Item $Exe "$appDir\notepad-md.exe"
+Copy-Item $Exe "$appDir\notepad.md.exe"
 # "new version" = same program with a marker appended (still a valid exe)
 $bytes = [IO.File]::ReadAllBytes($Exe) + [Text.Encoding]::ASCII.GetBytes('NOTEPADMD-UPDATE-TEST-MARKER')
 [IO.File]::WriteAllBytes("$rel\new.exe", $bytes)
 $hash = (Get-FileHash "$rel\new.exe" -Algorithm SHA256).Hash.ToLower()
 Write-Release 'v9.9.9' "sha256:$hash" $bytes.Length
-Start-App "$appDir\notepad-md.exe" $null -KeepSession
+Start-App "$appDir\notepad.md.exe" $null -KeepSession
 Start-Sleep -Milliseconds 800
 $oldPid = $script:proc.Id
 J "await showAbout(); checkForUpdates(); return 1" | Out-Null
@@ -160,9 +160,9 @@ $askShown = Has-Dialog
 Press-DialogButton 1 | Out-Null   # "Update now"
 $gone = $script:proc.WaitForExit(15000)
 Start-Sleep -Milliseconds 2500
-$newProc = Get-Process notepad-md -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq "$appDir\notepad-md.exe" -and $_.Id -ne $oldPid } | Select-Object -First 1
-$installedHash = (Get-FileHash "$appDir\notepad-md.exe" -Algorithm SHA256).Hash.ToLower()
-$oldLeft = Test-Path "$appDir\notepad-md.old"
+$newProc = Get-Process notepad.md -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq "$appDir\notepad.md.exe" -and $_.Id -ne $oldPid } | Select-Object -First 1
+$installedHash = (Get-FileHash "$appDir\notepad.md.exe" -Algorithm SHA256).Hash.ToLower()
+$oldLeft = Test-Path "$appDir\notepad.md.old"
 T 'Update: confirm prompt -> old app exits -> exe replaced -> new app running' "ask=$askShown exited=$gone replaced=$($installedHash -eq $hash) newProcess=$([bool]$newProc) oldFileCleanedUp=$(-not $oldLeft)" ($askShown -and $gone -and $installedHash -eq $hash -and $newProc -and -not $oldLeft)
 if ($newProc) {
     # The relaunched copy inherited the DevTools port: check it reopened the tabs.

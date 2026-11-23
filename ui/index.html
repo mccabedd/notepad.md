@@ -2,7 +2,7 @@
 <html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8" />
-<title>NotePad-MD</title>
+<title>notepad.md</title>
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -183,7 +183,7 @@
   <div id="settings" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="modal-panel">
       <div class="modal-head">
-        <span id="settings-title">Settings</span>
+        <span id="settings-title">notepad.md Settings</span>
         <button id="settings-close" title="Close (Esc)">&#10005;</button>
       </div>
       <div class="settings-tabs" role="tablist" aria-label="Settings pages">
@@ -237,20 +237,21 @@
         </section>
         <section data-tab="filetypes">
           <h3>Register file types</h3>
-          <p class="note">Tick a type to add NotePad-MD to its Windows <em>Open with</em> list (just for your Windows account). Your default apps never change: scripts such as .bat, .cmd and .ps1 still run as before.</p>
+          <p class="note">Tick a type to add notepad.md to its Windows <em>Open with</em> list (just for your Windows account). Your default apps never change: scripts such as .bat, .cmd and .ps1 still run as before.</p>
           <div class="ft-head">
             <label class="check"><input type="checkbox" id="ft-all" /> All / None</label>
             <span class="note" id="ft-count" aria-live="polite"></span>
           </div>
           <div class="ft-grid" id="ft-grid" role="group" aria-label="File types"></div>
           <p class="note" id="ft-status" aria-live="polite"></p>
+          <div class="row" id="ft-repair-row" hidden><span>Point Open with and the Explorer menu item at this copy (and tidy up entries left by copies that no longer exist)</span><button id="ft-repair">Use this copy</button></div>
         </section>
         <section data-tab="filetypes">
           <h3>Explorer</h3>
-          <label class="check"><input type="checkbox" id="explorer-menu" /> Show <b>Edit in NotePad-MD</b> when you right-click a file in Explorer</label>
+          <label class="check"><input type="checkbox" id="explorer-menu" /> Show <b>Edit in notepad.md</b> when you right-click a file in Explorer</label>
           <p class="note" id="explorer-menu-status">On Windows 11 it's under <em>Show more options</em> (or Shift+right-click).</p>
-          <div class="row"><span>Make NotePad-MD the default app</span><button id="ft-defaults" title="Opens Windows Settings &gt; Default apps">Open Windows Default Apps</button></div>
-          <p class="note">Windows only lets <em>you</em> choose default apps: after ticking a type, pick NotePad-MD there (or right-click a file &gt; Open with &gt; Choose another app &gt; NotePad-MD &gt; Always).</p>
+          <div class="row"><span>Make notepad.md the default app</span><button id="ft-defaults" title="Opens Windows Settings &gt; Default apps">Open Windows Default Apps</button></div>
+          <p class="note">Windows only lets <em>you</em> choose default apps: after ticking a type, pick notepad.md there (or right-click a file &gt; Open with &gt; Choose another app &gt; notepad.md &gt; Always).</p>
         </section>
         <section data-tab="validation">
           <h3>Syntax validation</h3>
@@ -292,13 +293,13 @@
   <div id="about" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="about-title">
     <div class="modal-panel about-panel">
       <div class="modal-head">
-        <span id="about-title">About</span>
+        <span id="about-title">About notepad.md</span>
         <button id="about-close" title="Close (Esc)">&#10005;</button>
       </div>
       <div class="about-body">
         <img src="app-icon.png" alt="" width="64" height="64" />
-        <div class="about-name">NotePad-MD <span id="about-version">v1.2.0</span></div>
-        <a href="https://github.com/mccabedd/notepad-md" id="about-link">https://github.com/mccabedd/notepad-md</a>
+        <div class="about-name">notepad.md <span id="about-version">v1.3.0</span></div>
+        <a href="https://github.com/mccabedd/notepad.md" id="about-link">https://github.com/mccabedd/notepad.md</a>
         <div>Created by David McCabe</div>
         <button id="about-update" class="primary">Check for Updates</button>
         <div id="about-update-status" class="about-status"></div>

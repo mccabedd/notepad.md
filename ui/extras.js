@@ -127,7 +127,7 @@ async function reloadFromDisk(doc, opts = {}) {
   }
   renderTabs();
   scheduleOutline();
-  if (changed && !opts.silent && !doc.follow) flashFindStatus('Reloaded "' + tabTitle(doc) + '" (it was changed outside NotePad-MD)');
+  if (changed && !opts.silent && !doc.follow) flashFindStatus('Reloaded "' + tabTitle(doc) + '" (it was changed outside notepad.md)');
   updateDiskNotice();
   return true;
 }
@@ -172,7 +172,7 @@ function updateDiskNotice() {
   };
   btns.innerHTML = '';
   if (doc.missing) {
-    text.textContent = name + ' was deleted or moved outside NotePad-MD. Your text is still here; Save writes it back.';
+    text.textContent = name + ' was deleted or moved outside notepad.md. Your text is still here; Save writes it back.';
     btns.append(
       make('Save', () => saveDocGeneric(doc), true),
       make('Close Tab', () => closeTab(doc.id)),
@@ -183,7 +183,7 @@ function updateDiskNotice() {
       })
     );
   } else {
-    text.textContent = name + ' was changed outside NotePad-MD, and you have unsaved changes.';
+    text.textContent = name + ' was changed outside notepad.md, and you have unsaved changes.';
     btns.append(
       make('Reload (lose my changes)', () => reloadFromDisk(doc, {})),
       make('Keep my version', () => {
@@ -215,7 +215,7 @@ async function confirmOverwriteIfChanged(doc, path) {
 }
 
 function askOverwriteChanged(doc) {
-  return dialogApi.ask('"' + tabTitle(doc) + '" was changed outside NotePad-MD after you opened it.\n\nOverwrite it with your version?', {
+  return dialogApi.ask('"' + tabTitle(doc) + '" was changed outside notepad.md after you opened it.\n\nOverwrite it with your version?', {
     title: 'File Changed on Disk',
     kind: 'warning',
     okLabel: 'Overwrite',

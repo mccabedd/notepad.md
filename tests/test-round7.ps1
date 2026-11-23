@@ -62,7 +62,7 @@ $exeReal = (Get-Item $Exe).FullName
 $label = (Get-ItemProperty -LiteralPath $verb -ErrorAction SilentlyContinue).'(default)'
 $icon = (Get-ItemProperty -LiteralPath $verb -ErrorAction SilentlyContinue).Icon
 $cmd = (Get-ItemProperty -LiteralPath "$verb\command" -ErrorAction SilentlyContinue).'(default)'
-T 'Ticking adds "Edit in NotePad-MD" with the app icon' "$r | label=$label icon=$icon cmd=$cmd" ($r -like 'true|*added*' -and $label -eq 'Edit in NotePad-MD' -and $icon -eq "`"$exeReal`",0" -and $cmd -eq "`"$exeReal`" `"%1`"")
+T 'Ticking adds "Edit in notepad.md" with the app icon' "$r | label=$label icon=$icon cmd=$cmd" ($r -like 'true|*added*' -and $label -eq 'Edit in notepad.md' -and $icon -eq "`"$exeReal`",0" -and $cmd -eq "`"$exeReal`" `"%1`"")
 $r = J "await refreshContextMenuStatus(); return ctxMenuBox.checked"
 T 'Status reads back as on' $r ($r -eq $true)
 Set-ItemProperty -LiteralPath "$verb\command" -Name '(default)' -Value '"C:\Old\notepad-md.exe" "%1"'
@@ -77,7 +77,7 @@ T 'Real right-click menu untouched by the test' "before=$realBefore after=$realA
 
 # ---------- version ----------
 $r = J "await showAbout(); await new Promise(r=>setTimeout(r,300)); return aboutEl.querySelector('.about-name').textContent.trim()"
-T "About shows v$AppVersion" $r ($r -eq "NotePad-MD v$AppVersion")
+T "About shows v$AppVersion" $r ($r -eq "notepad.md v$AppVersion")
 
 Stop-App
 Remove-Item Env:NOTEPADMD_REG_ROOT

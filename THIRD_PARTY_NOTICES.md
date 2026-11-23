@@ -1,8 +1,8 @@
 # Third-party notices
 
-NotePad-MD bundles the open-source components below (in `ui/vendor/`, and inside the released
+notepad.md bundles the open-source components below (in `ui/vendor/`, and inside the released
 `.exe`). Their licences require these notices to be passed on with copies of the software.
-NotePad-MD itself is under the MIT licence (see [LICENSE](LICENSE)).
+notepad.md itself is under the MIT licence (see [LICENSE](LICENSE)).
 
 | Component | Version | Used for | Licence |
 |---|---|---|---|
@@ -16,7 +16,7 @@ NotePad-MD itself is under the MIT licence (see [LICENSE](LICENSE)).
 | [Typo.js](https://github.com/cfinke/Typo.js) | 1.2.4, with one fix* | Spell checking | BSD-3-Clause (modified BSD) |
 | English (UK) and English (US) Hunspell dictionaries, from [SCOWL](http://wordlist.sourceforge.net) via [wooorm/dictionaries](https://github.com/wooorm/dictionaries) | as bundled | Spell-checking word lists | SCOWL licence (permissive, several authors; full text below) |
 
-\* NotePad-MD changes one line of Typo.js: compound-word rules must match the whole word
+\* notepad.md changes one line of Typo.js: compound-word rules must match the whole word
 (see the comment in `ui/vendor/typo.js`).
 
 The Rust crates compiled into the `.exe` (Tauri and its dependencies) are under MIT and/or

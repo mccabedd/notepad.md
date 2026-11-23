@@ -50,7 +50,7 @@ $p2 = Start-Process $Exe -ArgumentList "`"$W\notes.md`"" -PassThru
 $exited = $p2.WaitForExit(8000)
 Start-Sleep -Milliseconds 800
 $r = J "return tabTitle(getActive())"
-$count = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($sp) -and $_.ProcessName -match "^(notepad-md|np[0-9]+)$" }).Count
+$count = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($sp) -and $_.ProcessName -match "^(notepad-md|notepad.md|np[0-9]+)$" }).Count
 T 'Second launch with a file: hands it over and exits' "exited=$exited active=$r processes=$count" ($exited -and $r -eq 'notes.md' -and $count -eq 1)
 $p3 = Start-Process $Exe -ArgumentList 'data.json' -WorkingDirectory $W -PassThru
 $exited3 = $p3.WaitForExit(8000)
@@ -59,7 +59,7 @@ $r = J "return (getActive().path||'')"
 T 'Relative path from another folder opens the right file' "exited=$exited3 $r" ($exited3 -and $r -like '*work6\data.json')
 $p4 = Start-Process $Exe -PassThru
 $exited4 = $p4.WaitForExit(8000)
-$count = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($sp) -and $_.ProcessName -match "^(notepad-md|np[0-9]+)$" }).Count
+$count = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($sp) -and $_.ProcessName -match "^(notepad-md|notepad.md|np[0-9]+)$" }).Count
 T 'Second launch with no file just exits (one window)' "exited=$exited4 processes=$count" ($exited4 -and $count -eq 1)
 $p5 = Start-Process $Exe -ArgumentList "`"$W\notes.md`"" -PassThru
 $p5.WaitForExit(8000) | Out-Null

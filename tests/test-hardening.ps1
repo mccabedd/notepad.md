@@ -138,37 +138,37 @@ Stop-App
 
 # ---------- Updater refusals (run against a copy of the app) ----------
 $appDir = "$sp\update-hardening"; Remove-Item $appDir -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory $appDir | Out-Null
-Copy-Item $Exe "$appDir\notepad-md.exe"
-$origHash = (Get-FileHash "$appDir\notepad-md.exe").Hash
+Copy-Item $Exe "$appDir\notepad.md.exe"
+$origHash = (Get-FileHash "$appDir\notepad.md.exe").Hash
 $rel = "$sp\update-hardening-rel"; Remove-Item $rel -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory $rel | Out-Null
 $newBytes = [IO.File]::ReadAllBytes($Exe) + [Text.Encoding]::ASCII.GetBytes('NEW-VERSION')
 [IO.File]::WriteAllBytes("$rel\new.exe", $newBytes)
 $goodHash = (Get-FileHash "$rel\new.exe" -Algorithm SHA256).Hash.ToLower()
 $fileUrl = 'file:///' + ("$rel\new.exe").Replace('\', '/')
 function Write-Release([string]$url, $digest, $size) {
-  $o = @{ tag_name = 'v9.9.9'; html_url = 'https://github.com/mccabedd/notepad-md/releases/tag/v9.9.9'; body = 'Test'; assets = @(@{ name = 'NotepadMD-v9.9.9-win-x64.exe'; browser_download_url = $url; size = $size; digest = $digest }) }
+  $o = @{ tag_name = 'v9.9.9'; html_url = 'https://github.com/mccabedd/notepad.md/releases/tag/v9.9.9'; body = 'Test'; assets = @(@{ name = 'notepad.md-v9.9.9-win-x64.exe'; browser_download_url = $url; size = $size; digest = $digest }) }
   [IO.File]::WriteAllText("$rel\release.json", ($o | ConvertTo-Json -Depth 5), $utf8)
 }
 $env:NOTEPADMD_UPDATE_URL = 'file:///' + ("$rel\release.json").Replace('\', '/')
-Start-App "$appDir\notepad-md.exe" $null
+Start-App "$appDir\notepad.md.exe" $null
 $cases = @(
   @('No checksum on the release', $fileUrl, $null, $newBytes.Length, 'no checksum'),
   @('Malformed checksum', $fileUrl, 'sha256:1234', $newBytes.Length, 'no checksum'),
   @('Wrong checksum (tampered download)', $fileUrl, ('sha256:' + ('0' * 64)), $newBytes.Length, 'checksum test'),
   @('Wrong size', $fileUrl, "sha256:$goodHash", 12345, 'incomplete'),
-  @('Download from outside the project releases', 'https://example.com/NotepadMD.exe', "sha256:$goodHash", $newBytes.Length, 'outside the NotePad-MD releases')
+  @('Download from outside the project releases', 'https://example.com/NotepadMD.exe', "sha256:$goodHash", $newBytes.Length, 'outside the notepad.md releases')
 )
 foreach ($c in $cases) {
   Write-Release $c[1] $c[2] $c[3]
   $r = J "dialogApi.ask = async () => true; await showAbout(); await checkForUpdates(); return aboutStatus.textContent + '|' + aboutStatus.classList.contains('error')"
-  $staged = Test-Path "$appDir\notepad-md.exe.download"
-  $same = (Get-FileHash "$appDir\notepad-md.exe").Hash -eq $origHash
+  $staged = Test-Path "$appDir\notepad.md.exe.download"
+  $same = (Get-FileHash "$appDir\notepad.md.exe").Hash -eq $origHash
   T "Update refused: $($c[0])" "$r staged=$staged unchanged=$same" ($r -like "*$($c[4])*|true" -and -not $staged -and $same -and -not $script:proc.HasExited)
 }
 # The page can no longer hand the installer its own download address.
 Write-Release $fileUrl $null $newBytes.Length
 $r = J "try { await invoke('cmd_install_update', { assetUrl: 'https://example.com/evil.exe', digest: null, size: null }); return 'installed?'; } catch (e) { return String(e); }"
-T 'Installer ignores addresses passed from the page' $r ($r -like '*no checksum*' -and (Get-FileHash "$appDir\notepad-md.exe").Hash -eq $origHash)
+T 'Installer ignores addresses passed from the page' $r ($r -like '*no checksum*' -and (Get-FileHash "$appDir\notepad.md.exe").Hash -eq $origHash)
 Stop-App
 Remove-Item Env:NOTEPADMD_UPDATE_URL
 

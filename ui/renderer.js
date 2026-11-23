@@ -2009,7 +2009,7 @@ let lastWindowTitle = '';
 function updateWindowTitle() {
   const doc = getActive();
   if (!doc) return;
-  const title = (doc.dirty ? '*' : '') + tabTitle(doc) + ' - NotePad-MD';
+  const title = (doc.dirty ? '*' : '') + tabTitle(doc) + ' - notepad.md';
   if (title === lastWindowTitle) return;
   lastWindowTitle = title;
   try {

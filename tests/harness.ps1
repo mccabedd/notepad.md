@@ -1,4 +1,4 @@
-﻿# Test harness: launch NotePad-MD with a CDP debug port, send real keystrokes, read JS state.
+﻿# Test harness: launch notepad.md with a CDP debug port, send real keystrokes, read JS state.
 # Everything the tests write (session, WebView2 profile, sample files) lives in $script:TestDir
 # (NOTEPADMD_TEST_DIR, default %TEMP%\notepadmd-tests), never in your real profile.
 $script:TestDir = . "$PSScriptRoot\testdir.ps1"
@@ -41,7 +41,7 @@ public static class KB {
             uint p; GetWindowThreadProcessId(h, out p);
             if (p == pid && IsWindowVisible(h)) {
                 var t = new StringBuilder(256); GetWindowText(h, t, 256);
-                if (t.ToString().Contains("NotePad-MD")) { found = h; return false; }
+                if (t.ToString().Contains("notepad.md")) { found = h; return false; }
             }
             return true;
         }, IntPtr.Zero);
@@ -75,7 +75,7 @@ $script:ws = $null
 $script:msgId = 0
 
 function Start-App([string]$exe, [string]$file, [int]$port = 9333, [switch]$KeepSession) {
-    Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($script:TestDir) -and $_.ProcessName -match "^(notepad-md|np[0-9]+)$" } | Stop-Process -Force
+    Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($script:TestDir) -and $_.ProcessName -match "^(notepad-md|notepad.md|np[0-9]+)$" } | Stop-Process -Force
     Start-Sleep -Milliseconds 800
     $env:NOTEPADMD_DATA_DIR = "$script:TestDir\appdata"
     if (-not $KeepSession) { Remove-Item "$env:NOTEPADMD_DATA_DIR\session.json" -ErrorAction SilentlyContinue }
@@ -145,7 +145,7 @@ $VK = @{ CTRL = 0x11; ALT = 0x12; SHIFT = 0x10; TAB = 0x09; ESC = 0x1B; ENTER = 
 # Press a combo like 'CTRL+ALT+1' or 'CTRL+SHIFT+OEM_PLUS'
 function Send-Combo([string]$combo) {
     if ([KB]::GetForegroundWindow() -ne $script:hwnd) {
-        if (-not [KB]::ForceForeground($script:hwnd)) { throw "NotePad-MD lost focus; refusing to send $combo" }
+        if (-not [KB]::ForceForeground($script:hwnd)) { throw "notepad.md lost focus; refusing to send $combo" }
         Start-Sleep -Milliseconds 200
     }
     $parts = $combo.Split('+')
@@ -178,5 +178,5 @@ function Proc-Windows { return [KB]::ProcWindows([uint32]$script:proc.Id) }
 function Stop-App {
     try { $script:ws.Dispose() } catch {}
     if ($script:proc) { try { Stop-Process -Id $script:proc.Id -Force -ErrorAction SilentlyContinue } catch {} }
-    Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($script:TestDir) -and $_.ProcessName -match "^(notepad-md|np[0-9]+)$" } | Stop-Process -Force
+    Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($script:TestDir) -and $_.ProcessName -match "^(notepad-md|notepad.md|np[0-9]+)$" } | Stop-Process -Force
 }

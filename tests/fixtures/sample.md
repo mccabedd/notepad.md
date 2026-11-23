@@ -1,4 +1,4 @@
-# NotePad-MD Sample
+# notepad.md Sample
 
 This is a **test** of the _Markdown_ preview.
 
