@@ -307,6 +307,7 @@ async function openRecent(i) {
 
 function clearRecent() {
   recentFiles = [];
+  clearVisitedLinks(); // links opened before show as not visited again
   pushRecentMenu();
   scheduleSessionSave();
 }

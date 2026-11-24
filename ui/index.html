@@ -292,6 +292,14 @@
       <div class="modal-foot"><span class="spacer"></span><button id="goto-cancel">Cancel</button><button id="goto-go" class="primary">Go</button></div>
     </div>
   </div>
+  <!-- "Save changes?" with Yes / No / Cancel (Enter = Yes, Esc = Cancel). -->
+  <div id="save-ask" class="modal hidden" role="alertdialog" aria-modal="true" aria-labelledby="save-ask-title" aria-describedby="save-ask-text">
+    <div class="modal-panel save-ask-panel">
+      <div class="modal-head"><span id="save-ask-title">Save</span></div>
+      <div class="save-ask-body"><span class="save-ask-icon" aria-hidden="true">?</span><span id="save-ask-text"></span></div>
+      <div class="modal-foot"><span class="spacer"></span><button id="save-ask-yes" class="primary" data-answer="yes"><u>Y</u>es</button><button id="save-ask-no" data-answer="no"><u>N</u>o</button><button id="save-ask-cancel" data-answer="cancel">Cancel</button></div>
+    </div>
+  </div>
   <div id="about" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="about-title">
     <div class="modal-panel about-panel">
       <div class="modal-head">
@@ -300,7 +308,7 @@
       </div>
       <div class="about-body">
         <img src="app-icon.png" alt="" width="64" height="64" />
-        <div class="about-name">notepad.md <span id="about-version">v1.4.0</span></div>
+        <div class="about-name">notepad.md <span id="about-version">v1.4.1</span></div>
         <a href="https://github.com/mccabedd/notepad.md" id="about-link">https://github.com/mccabedd/notepad.md</a>
         <div>Created by David McCabe</div>
         <button id="about-update" class="primary">Check for Updates</button>

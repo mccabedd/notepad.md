@@ -36,7 +36,7 @@ $w = $work.Replace('\', '\\')
 Start-App $Exe $null
 Focus-App | Out-Null
 Cdp 'Emulation.setFocusEmulationEnabled' @{ enabled = $true } | Out-Null
-J "dialogApi.ask = async (m) => { (window.__asks = window.__asks || []).push(m); return window.__askAnswer !== false; }; dialogApi.message = async (m) => { (window.__msgs = window.__msgs || []).push(m); }; return 1" | Out-Null
+J "dialogApi.ask = async (m) => { (window.__asks = window.__asks || []).push(m); return window.__askAnswer !== false; }; askSaveYesNoCancel = async (m) => { (window.__asks = window.__asks || []).push(m); return window.__askAnswer === false ? 'no' : 'yes'; }; dialogApi.message = async (m, o) => { (window.__msgs = window.__msgs || []).push(m); if (o && o.buttons) { (window.__asks = window.__asks || []).push(m); return window.__askAnswer === false ? 'No' : 'Yes'; } }; return 1" | Out-Null
 $r = J "return document.getElementById('about-version').textContent"
 T "About shows v$AppVersion" $r ($r -eq "v$AppVersion")
 

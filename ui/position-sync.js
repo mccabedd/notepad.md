@@ -122,7 +122,8 @@ function editorYForOffset(pos) {
     return kids[line].getBoundingClientRect().top - editorHighlight.getBoundingClientRect().top + editorHighlight.scrollTop;
   }
   const cs = getComputedStyle(editor);
-  return (parseFloat(cs.paddingTop) || 0) + line * (parseFloat(cs.lineHeight) || 21);
+  const w = settings.wordWrap ? wrapLayout() : null; // a huge file: where wrapped lines start
+  return (parseFloat(cs.paddingTop) || 0) + (w ? w.rowOf(line) : line) * (parseFloat(cs.lineHeight) || 21);
 }
 
 /** The source offset of the line shown at y in the editor's scrolled content. */
@@ -143,7 +144,9 @@ function offsetForEditorY(y) {
     line = lo;
   } else {
     const cs = getComputedStyle(editor);
-    line = Math.max(0, Math.floor((y - (parseFloat(cs.paddingTop) || 0)) / (parseFloat(cs.lineHeight) || 21)));
+    const row = (y - (parseFloat(cs.paddingTop) || 0)) / (parseFloat(cs.lineHeight) || 21);
+    const w = settings.wordWrap ? wrapLayout() : null;
+    line = w ? w.lineAtRow(Math.max(0, row)) : Math.max(0, Math.floor(row));
   }
   let pos = 0;
   for (let k = 0; k < line; k++) {

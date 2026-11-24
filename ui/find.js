@@ -572,10 +572,8 @@ function scrollEditorToOffset(pos) {
       y = rect.top - base.top + editorHighlight.scrollTop;
     }
   }
-  if (y === null) {
-    const lineNo = editor.value.slice(0, pos).split('\n').length - 1;
-    y = lineNo * (parseFloat(getComputedStyle(editor).lineHeight) || 21) + 14;
-  }
+  // No coloured layer (a huge file): where the line is, with word-wrapped lines worked out.
+  if (y === null) y = editorYForOffset(pos);
   const visibleTop = editor.scrollTop;
   if (y < visibleTop + 20 || y > visibleTop + editor.clientHeight - 40) {
     editor.scrollTop = Math.max(0, y - editor.clientHeight / 3);

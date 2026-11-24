@@ -591,6 +591,7 @@ function overlayNeedsLines() {
 /** After the text changed: recount the lines and redraw the rows in view. */
 function updateLineNumbers() {
   if (!lineNumbersVisible) return;
+  wrapTextVersion++;
   let count = 1;
   const v = editor.value;
   for (let i = v.indexOf('\n'); i !== -1; i = v.indexOf('\n', i + 1)) count++;
@@ -641,6 +642,18 @@ function gutterRowsInView() {
   const lh = parseFloat(cs.lineHeight) || 21;
   const pad = parseFloat(cs.paddingTop) || 0;
   const shift = editor.getBoundingClientRect().top - box.top + pad - editor.scrollTop;
+  const wrap = settings.wordWrap ? wrapLayout() : null;
+  if (wrap) {
+    // A file too big for the coloured layer, with word wrap on: where each line starts comes from
+    // working out how the editor wraps it (wrapLayout), so a wrapped line still gets one number.
+    const first = wrap.lineAtRow(Math.max(0, -shift / lh));
+    for (let i = first; i < gutterCount; i++) {
+      const top = shift + wrap.rowOf(i) * lh;
+      if (top > height) break;
+      out.push({ line: i, top, height: (wrap.rowOf(i + 1) - wrap.rowOf(i)) * lh });
+    }
+    return out;
+  }
   const first = Math.max(0, Math.floor(-shift / lh));
   for (let i = first; i < gutterCount; i++) {
     const top = shift + i * lh;
@@ -648,6 +661,107 @@ function gutterRowsInView() {
     out.push({ line: i, top, height: lh });
   }
   return out;
+}
+
+/* ---------- where wrapped lines start, without the coloured layer (very big files) ----------
+ * The editor's textarea doesn't tell where its lines wrap. For files the coloured layer can't
+ * hold, each line's rows are worked out the way the textarea wraps (pre-wrap: at spaces, and
+ * inside a word only when the word alone is wider than the line), with the monospace character
+ * width measured from the editor's font. The total is checked against the textarea's real height
+ * and any small difference (a character drawn wider than the rest) is spread evenly, so the
+ * numbers can't drift away from their lines. Worked out again when the text, width or font change;
+ * while typing in a huge file, at most a few times a second. */
+
+let wrapCache = null; // { key, version, at, rows: Float64Array (row where each line starts, then the total) }
+let wrapTextVersion = 0; // bumped by updateLineNumbers() when the text changes
+let wrapCanvas = null;
+
+function lineRowsFor(text, cols, tab) {
+  if (text.length <= cols && text.indexOf('\t') < 0) return 1;
+  let rows = 1;
+  let col = 0;
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const c = text[i];
+    if (c === ' ' || c === '\t') {
+      // Spaces (and tabs) can run past the edge without wrapping; the next word then starts a new row.
+      if (c === '\t') col = (Math.floor(col / tab) + 1) * tab;
+      else col++;
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < n && text[j] !== ' ' && text[j] !== '\t') j++;
+    let w = j - i;
+    if (col > 0 && col + w > cols) {
+      rows++;
+      col = 0;
+    }
+    while (col + w > cols) {
+      // A word longer than the line is broken where the line ends.
+      w -= cols - col;
+      rows++;
+      col = 0;
+    }
+    col += w;
+    i = j;
+  }
+  return rows;
+}
+
+function wrapLayout() {
+  const v = editor.value;
+  const cs = getComputedStyle(editor);
+  const width = editor.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+  if (width <= 0) return null;
+  const geom = width + '|' + cs.font + '|' + cs.tabSize;
+  const now = performance.now();
+  if (wrapCache && wrapCache.geom === geom) {
+    if (wrapCache.version === wrapTextVersion) return wrapCache;
+    // Typing in a huge file: keep the layout from a moment ago, redo it shortly.
+    if (now - wrapCache.at < 400) {
+      clearTimeout(wrapLayout.timer);
+      wrapLayout.timer = setTimeout(scheduleGutter, 420);
+      return wrapCache;
+    }
+  }
+  if (!wrapCanvas) wrapCanvas = document.createElement('canvas').getContext('2d');
+  wrapCanvas.font = cs.font;
+  const charW = wrapCanvas.measureText('0123456789'.repeat(10)).width / 100 || 8;
+  const cols = Math.max(1, Math.floor((width + 0.5) / charW));
+  const tab = parseInt(cs.tabSize, 10) || 4;
+  const lines = v.split('\n');
+  const rows = new Float64Array(lines.length + 1);
+  let total = 0;
+  for (let k = 0; k < lines.length; k++) {
+    rows[k] = total;
+    total += lineRowsFor(lines[k], cols, tab);
+  }
+  rows[lines.length] = total;
+  // Spread any difference with the textarea's real height evenly (it can't drift then).
+  const lh = parseFloat(cs.lineHeight) || 21;
+  const real = (editor.scrollHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0)) / lh;
+  const scale = total > 0 && real > 0 && Math.abs(real - total) / total < 0.2 ? real / total : 1;
+  if (scale !== 1) for (let k = 0; k <= lines.length; k++) rows[k] *= scale;
+  wrapCache = {
+    geom,
+    version: wrapTextVersion,
+    at: now,
+    rows,
+    rowOf: (line) => rows[Math.max(0, Math.min(line, rows.length - 1))],
+    lineAtRow: (row) => {
+      let lo = 0;
+      let hi = rows.length - 2;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (rows[mid] <= row) lo = mid;
+        else hi = mid - 1;
+      }
+      return Math.max(0, lo);
+    },
+  };
+  return wrapCache;
 }
 
 function renderGutter() {
@@ -686,6 +800,9 @@ function gutterLineAt(e) {
   return null;
 }
 
+// The last plain click in the bookmark margin (a Shift+click then applies the same to a range).
+let gutterAnchor = null;
+
 function wireGutter() {
   lineNumbersEl.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
@@ -694,7 +811,20 @@ function wireGutter() {
     const doc = getActive();
     if (line === null || !doc) return;
     if (e.target.closest('.ln-m') || e.clientX >= lineNumbersEl.getBoundingClientRect().right - 20) {
-      setBookmarks(doc, [line], bookmarkOf(doc, line) ? null : settings.bookmarkColour);
+      // Shift+click: every line from the last click to this one gets what that click did
+      // (bookmarked in its colour, or bookmark removed).
+      if (e.shiftKey && gutterAnchor && gutterAnchor.docId === doc.id) {
+        const lo = Math.min(gutterAnchor.line, line);
+        const hi = Math.max(gutterAnchor.line, line);
+        const lines = [];
+        for (let l = lo; l <= hi; l++) lines.push(l);
+        setBookmarks(doc, lines, gutterAnchor.colour);
+        flashFindStatus((gutterAnchor.colour ? 'Bookmarked' : 'Removed bookmarks from') + ' lines ' + (lo + 1) + '–' + (hi + 1) + '.');
+        return;
+      }
+      const colour = bookmarkOf(doc, line) ? null : settings.bookmarkColour;
+      setBookmarks(doc, [line], colour);
+      gutterAnchor = { docId: doc.id, line, colour };
       return;
     }
     // On the number: select the whole line.
@@ -1074,6 +1204,7 @@ function urlAtOffset(text, pos) {
 }
 
 function openUrl(url) {
+  noteVisitedLink(url);
   invoke('cmd_open_url', { url }).catch((e) => flashFindStatus('Could not open the link: ' + e));
 }
 
@@ -1766,6 +1897,7 @@ function renderPreview(doc) {
     preview.setAttribute('contenteditable', 'true');
     setSanitizedHtml(preview, marked_.parse(doc.content), true);
     markBareLinks();
+    markVisitedLinks();
     fixPreviewImages(doc);
     enableCheckboxes();
     highlightPreviewCodeBlocks();
@@ -1774,6 +1906,7 @@ function renderPreview(doc) {
   } else if (mode === 'bbcode') {
     preview.setAttribute('contenteditable', 'true'); // typing here writes BBCode back to the source
     preview.innerHTML = renderBBCode(doc.content);
+    markVisitedLinks();
     addCodeCopyButtons();
   } else if (mode === 'plain') {
     // Plain Text: the text exactly as written (no Markdown), and typed into as plain text.
@@ -2402,15 +2535,57 @@ function removeDoc(id) {
   scheduleSessionSave();
 }
 
+/**
+ * "Save changes?" with Yes, No and Cancel: resolves 'yes', 'no' or 'cancel'. Shown in the window
+ * (like Settings and Go to Line), so it follows the light / dark theme and the app always knows
+ * which answer was given. Enter = Yes, Esc = Cancel, Y / N also work.
+ */
+let saveAskPending = null;
+function askSaveYesNoCancel(text) {
+  const box = document.getElementById('save-ask');
+  if (saveAskPending) saveAskPending('cancel'); // only one at a time
+  hideContextMenu();
+  document.getElementById('save-ask-text').textContent = text;
+  const back = document.activeElement;
+  box.classList.remove('hidden');
+  return new Promise((resolve) => {
+    const done = (answer) => {
+      box.classList.add('hidden');
+      box.removeEventListener('click', onClick);
+      box.removeEventListener('keydown', onKey, true);
+      saveAskPending = null;
+      if (back && back.focus && answer === 'cancel') back.focus();
+      resolve(answer);
+    };
+    const onClick = (e) => {
+      const b = e.target.closest('button[data-answer]');
+      if (b) done(b.dataset.answer);
+    };
+    const onKey = (e) => {
+      const k = e.key.toLowerCase();
+      if (e.key === 'Escape') done('cancel');
+      else if (k === 'y') done('yes');
+      else if (k === 'n') done('no');
+      else if (e.key === 'Enter' && !e.target.closest('button')) done('yes');
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    box.addEventListener('click', onClick);
+    box.addEventListener('keydown', onKey, true);
+    saveAskPending = done;
+    document.getElementById('save-ask-yes').focus();
+  });
+}
+
 async function closeTab(id) {
   const doc = docs.find((d) => d.id === id);
   if (!doc) return;
   if (doc.dirty) {
-    const save = await dialogApi.ask('Save changes to "' + tabTitle(doc) + '" before closing?', {
-      title: 'Unsaved Changes',
-      kind: 'warning',
-    });
-    if (save) {
+    // Yes saves, No closes without saving, Cancel (or Esc) keeps the tab open.
+    const answer = await askSaveYesNoCancel('Save changes to "' + tabTitle(doc) + '" before closing?');
+    if (answer === 'cancel') return;
+    if (answer === 'yes') {
       const ok = await saveDocGeneric(doc);
       if (!ok) return;
     }
@@ -2443,6 +2618,7 @@ function captureUi() {
     find: captureFindState(),
     settings,
     recent: recentFiles,
+    visitedLinks: [...visitedLinks],
   };
 }
 
@@ -2524,6 +2700,7 @@ function applyUi(ui) {
   words.forEach((w) => spell.userWords.add(w));
   windowState = ui.window || null;
   recentFiles = Array.isArray(ui.recent) ? ui.recent.filter((p) => typeof p === 'string').slice(0, 10) : [];
+  setVisitedLinks(ui.visitedLinks);
 }
 
 async function restoreDocs(s) {
@@ -2655,11 +2832,14 @@ async function handleCloseRequested() {
   if (!settings.restoreSession) {
     const dirty = docs.filter((d) => d.dirty);
     if (dirty.length) {
-      const save = await dialogApi.ask(
-        'Save changes to ' + dirty.map(tabTitle).join(', ') + ' before closing?\n\n(Session restore is off in Settings, so unsaved changes will be lost otherwise.)',
-        { title: 'Unsaved Changes', kind: 'warning', okLabel: 'Save', cancelLabel: "Don't Save" }
+      const answer = await askSaveYesNoCancel(
+        'Save changes to ' + dirty.map(tabTitle).join(', ') + ' before closing?\n\n(Session restore is off in Settings, so unsaved changes will be lost otherwise.)'
       );
-      if (save) {
+      if (answer === 'cancel') {
+        await invoke('cmd_close_cancelled'); // the app stays open
+        return;
+      }
+      if (answer === 'yes') {
         for (const d of dirty) {
           if (!(await saveDocGeneric(d))) {
             await invoke('cmd_close_cancelled');
@@ -3302,6 +3482,7 @@ function wireDomEvents() {
     if (link && link.href && /^https?:\/\//i.test(link.href)) {
       e.preventDefault();
       e.stopPropagation();
+      noteVisitedLink(link.href);
       invoke('cmd_open_url', { url: link.href });
       return;
     }

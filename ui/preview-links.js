@@ -130,3 +130,45 @@ function wirePreviewLinks() {
   preview.addEventListener('scroll', hideLinkPopup);
   preview.addEventListener('keydown', hideLinkPopup);
 }
+
+/* ---------- visited links ----------
+ * Links open in your browser, never in the preview, so the preview can't know about visits by
+ * itself: the addresses opened from notepad.md are remembered here (saved with the session) and
+ * shown in purple. File > Recent Files > Clear Recent Files forgets them too. */
+
+const VISITED_MAX = 2000;
+let visitedLinks = new Set();
+
+function visitedKey(url) {
+  try {
+    const u = new URL(url);
+    u.hash = '';
+    return u.href;
+  } catch (e) {
+    return String(url);
+  }
+}
+
+function setVisitedLinks(list) {
+  visitedLinks = new Set((Array.isArray(list) ? list : []).filter((u) => typeof u === 'string').slice(-VISITED_MAX));
+}
+
+function noteVisitedLink(url) {
+  if (!/^https?:/i.test(url || '')) return;
+  const k = visitedKey(url);
+  visitedLinks.delete(k);
+  visitedLinks.add(k);
+  if (visitedLinks.size > VISITED_MAX) visitedLinks.delete(visitedLinks.values().next().value);
+  markVisitedLinks();
+  scheduleSessionSave();
+}
+
+/** Marks the preview's links that were opened before (class np-visited). */
+function markVisitedLinks() {
+  for (const a of preview.querySelectorAll('a[href]')) a.classList.toggle('np-visited', visitedLinks.has(visitedKey(a.href)));
+}
+
+function clearVisitedLinks() {
+  visitedLinks.clear();
+  markVisitedLinks();
+}

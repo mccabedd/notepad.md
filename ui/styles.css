@@ -876,9 +876,9 @@ body.nowrap .preview.code-view pre code {
 
 :root[data-theme="light"] {
   --find-hit: rgba(255, 196, 0, 0.45);
-  --bm-red-bg: #fbdde0;
-  --bm-orange-bg: #fde6cc;
-  --bm-green-bg: #d4f0e0;
+  --bm-red-bg: #fdecee;
+  --bm-orange-bg: #fef1e1;
+  --bm-green-bg: #e5f6ec;
   --bm-row-fg: var(--fg);
   --nav-line: rgba(10, 102, 204, 0.14);
   --row-alt: rgba(0, 0, 0, 0.025);
@@ -887,9 +887,9 @@ body.nowrap .preview.code-view pre code {
 
 :root[data-theme="dark"] {
   --find-hit: rgba(255, 196, 0, 0.32);
-  --bm-red-bg: #7a1e27;
-  --bm-orange-bg: #70400d;
-  --bm-green-bg: #145b35;
+  --bm-red-bg: #5c2b31;
+  --bm-orange-bg: #56401f;
+  --bm-green-bg: #22493a;
   --bm-row-fg: #fff4f4;
   --nav-line: rgba(78, 161, 255, 0.18);
   --row-alt: rgba(255, 255, 255, 0.03);
@@ -2284,4 +2284,38 @@ pre.plain-text {
   background: none;
   border: 0;
   padding: 0;
+}
+
+/* Links in the preview: easier to see in dark mode; links opened before are purple. */
+:root[data-theme="dark"] .preview a {
+  color: #4ea1ff;
+}
+.preview a.np-visited {
+  color: #7b52c9;
+}
+:root[data-theme="dark"] .preview a.np-visited {
+  color: #a78ae1;
+}
+
+/* "Save changes?" — Yes / No / Cancel. */
+.save-ask-panel {
+  width: min(420px, calc(100vw - 32px));
+}
+.save-ask-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 16px 10px;
+  white-space: pre-line;
+  line-height: 1.45;
+}
+.save-ask-icon {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font: 700 16px/26px "Segoe UI", sans-serif;
+  text-align: center;
 }

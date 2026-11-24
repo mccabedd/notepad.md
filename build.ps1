@@ -15,6 +15,10 @@ try {
 } finally { Pop-Location }
 $dir = "$PSScriptRoot\src-tauri\target\release"
 Copy-Item "$dir\notepad-md.exe" "$dir\notepad.md.exe" -Force
+# A copy of the app still running from here keeps the old file: never report a stale build as done.
+if ((Get-FileHash "$dir\notepad-md.exe").Hash -ne (Get-FileHash "$dir\notepad.md.exe").Hash) {
+    throw "notepad.md.exe was not replaced - is the app still running from $dir ?"
+}
 $size = (Get-Item "$dir\notepad.md.exe").Length
 "Built $dir\notepad.md.exe ($([Math]::Round($size / 1MB, 2)) MB)"
 if ($Release) {

@@ -159,10 +159,17 @@ $r = J "settings.restoreSession=false; scheduleSessionSave(); const d=getActive(
 $hwnd = [KB]::MainWin([uint32]$script:proc.Id)
 [void][W32]::PostMessage($hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
 Start-Sleep -Milliseconds 5500    # longer than the 4s safety-net timer
-$dialog = Has-Dialog
+$dialog = J "return !document.getElementById('save-ask').classList.contains('hidden') + '|' + document.getElementById('save-ask-text').textContent.slice(0, 40)"
 $alive = -not $script:proc.HasExited
-T 'Restore off: close shows a save prompt and the window waits for it' "dirty=$r dialog=$dialog alive=$alive" ($dialog -and $alive)
-Close-PromptCancel | Out-Null   # press "Don't Save"
+T 'Restore off: close shows the Yes / No / Cancel prompt and the window waits for it' "dirty=$r dialog=$dialog alive=$alive" ($dialog -like 'true|Save changes to*' -and $alive)
+J "document.getElementById('save-ask-cancel').click(); return 1" | Out-Null   # Cancel: the app must stay open
+Start-Sleep -Milliseconds 5500    # longer than the 4s safety-net timer
+$alive = -not $script:proc.HasExited
+$still = J "return getActive().dirty"
+T 'Cancel keeps the app open with the unsaved text' "alive=$alive dirty=$still" ($alive -and $still -eq $true)
+[void][W32]::PostMessage($hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+Start-Sleep -Milliseconds 1500
+J "document.getElementById('save-ask-no').click(); return 1" | Out-Null   # No: close without saving
 $exited = $script:proc.WaitForExit(6000)
 $disk = Get-Content "$W\table.md" -Raw
 T "Don't Save closes the app and leaves the file alone" "exited=$exited fileChanged=$($disk.Contains('unsaved line'))" ($exited -and -not $disk.Contains('unsaved line'))
@@ -176,7 +183,7 @@ J "await openPath('$(P 'plain.txt')'); setLayoutMode('edit-only'); editor.value 
 $hwnd = [KB]::MainWin([uint32]$script:proc.Id)
 [void][W32]::PostMessage($hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
 Start-Sleep -Milliseconds 1200
-Press-DialogButton 1 | Out-Null   # "Save"
+J "document.getElementById('save-ask-yes').click(); return 1" | Out-Null   # Yes: save, then close
 $exited = $script:proc.WaitForExit(6000)
 $disk = Get-Content "$W\plain.txt" -Raw
 T 'Save answer saves, then closes' "exited=$exited saved=$($disk.Contains('SAVED ON CLOSE'))" ($exited -and $disk.Contains('SAVED ON CLOSE'))
