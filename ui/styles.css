@@ -636,7 +636,7 @@ body {
   --bm-margin: 16px; /* the bookmark margin, right of the numbers */
   position: relative;
   flex: 0 0 auto;
-  width: calc(3ch + 12px + var(--bm-margin));
+  width: calc(1ch + 12px + var(--bm-margin));
   overflow: hidden;
   padding: 0;
   text-align: right;

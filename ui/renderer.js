@@ -596,8 +596,8 @@ function updateLineNumbers() {
   const v = editor.value;
   for (let i = v.indexOf('\n'); i !== -1; i = v.indexOf('\n', i + 1)) count++;
   gutterCount = count;
-  // Wide enough for the biggest number (at least 3 digits), so 5- and 6-digit numbers aren't cut off.
-  const digits = Math.max(3, String(count).length);
+  // Exactly as wide as the biggest number: no empty space in short files, and 5- and 6-digit numbers aren't cut off.
+  const digits = String(count).length;
   if (lineNumbersEl.dataset.digits !== String(digits)) {
     lineNumbersEl.dataset.digits = String(digits);
     lineNumbersEl.style.width = 'calc(' + digits + 'ch + 12px + var(--bm-margin) + var(--diag-margin, 0px))';
