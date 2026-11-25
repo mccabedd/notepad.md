@@ -382,6 +382,60 @@ body {
   background: var(--border);
 }
 
+/* Buttons and the count never wrap: the Find / Replace boxes shrink instead. */
+.find-bar > button,
+.find-toggles,
+.find-adv,
+#find-status {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* The Find / Replace boxes carry a small ▾ for recent entries inside their right edge. */
+.find-box {
+  position: relative;
+  display: flex;
+  flex: 0 1 220px;
+  min-width: 90px;
+}
+.find-bar .find-box input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 22px;
+}
+.find-bar .find-hist {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  width: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+.find-bar .find-hist:hover {
+  color: var(--fg);
+}
+.find-toggles {
+  display: flex;
+  gap: 2px;
+}
+.find-bar .find-tog {
+  min-width: 28px;
+  padding: 3px 5px;
+  font-family: "Segoe UI", sans-serif;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.find-bar .find-tog[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 #find-status {
   color: var(--fg-muted);
   font-size: 12px;
@@ -2298,8 +2352,13 @@ pre.plain-text {
 }
 
 /* "Save changes?" — Yes / No / Cancel. */
+#save-ask {
+  z-index: 140; /* above Settings, About and Go to Line, which can ask questions too */
+}
 .save-ask-panel {
-  width: min(420px, calc(100vw - 32px));
+  width: auto;
+  min-width: min(420px, calc(100vw - 32px));
+  max-width: min(560px, calc(100vw - 32px));
 }
 .save-ask-body {
   display: flex;
@@ -2318,4 +2377,16 @@ pre.plain-text {
   color: #fff;
   font: 700 16px/26px "Segoe UI", sans-serif;
   text-align: center;
+}
+.save-ask-icon[data-kind="warning"] {
+  background: #d18b00;
+}
+.save-ask-icon[data-kind="error"] {
+  background: #c42b1c;
+  font-size: 14px;
+}
+#save-ask-text {
+  max-height: 50vh;
+  overflow: auto;
+  overflow-wrap: anywhere;
 }

@@ -1,6 +1,6 @@
 [package]
 name = "notepad-md"
-version = "1.4.1"
+version = "1.4.2"
 description = "A Notepad-like application for viewing and editing Markdown files"
 edition = "2021"
 

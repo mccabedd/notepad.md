@@ -2540,21 +2540,72 @@ function removeDoc(id) {
  * (like Settings and Go to Line), so it follows the light / dark theme and the app always knows
  * which answer was given. Enter = Yes, Esc = Cancel, Y / N also work.
  */
-let saveAskPending = null;
 function askSaveYesNoCancel(text) {
+  return showAppDialog({
+    title: 'Save',
+    text,
+    kind: 'question',
+    buttons: [
+      { answer: 'yes', label: 'Yes', key: 'y', primary: true },
+      { answer: 'no', label: 'No', key: 'n' },
+      { answer: 'cancel', label: 'Cancel' },
+    ],
+    escape: 'cancel',
+  });
+}
+
+/**
+ * Every question and message box in the app uses this one in-window dialog (#save-ask), so they all
+ * look the same and follow the light / dark theme. Native Windows boxes are not used: they ignore the
+ * theme, and the window can't tell which answer was given if it is closed while one is up.
+ *   buttons: [{ answer, label, key?, primary? }]. `key` is underlined and works as a shortcut.
+ *   Enter = the primary button (unless a button has focus), Esc = `escape`.
+ * Resolves to the chosen button's `answer`. Only one is shown at a time: a new one answers the old
+ * one with its `escape` answer.
+ */
+let appDialogPending = null;
+const APP_DIALOG_ICONS = { question: '?', info: 'i', warning: '!', error: '✕' };
+function showAppDialog({ title, text, kind = 'info', buttons, escape }) {
   const box = document.getElementById('save-ask');
-  if (saveAskPending) saveAskPending('cancel'); // only one at a time
+  if (appDialogPending) appDialogPending(null);
   hideContextMenu();
+  document.getElementById('save-ask-title').textContent = title || 'notepad.md';
   document.getElementById('save-ask-text').textContent = text;
+  const icon = box.querySelector('.save-ask-icon');
+  icon.textContent = APP_DIALOG_ICONS[kind] || 'i';
+  icon.dataset.kind = APP_DIALOG_ICONS[kind] ? kind : 'info';
+  const foot = box.querySelector('.modal-foot');
+  foot.innerHTML = '<span class="spacer"></span>';
+  let primary = null;
+  for (const b of buttons) {
+    const el = document.createElement('button');
+    el.id = 'save-ask-' + b.answer;
+    el.dataset.answer = b.answer;
+    if (b.primary) {
+      el.className = 'primary';
+      primary = el;
+    }
+    const i = b.key ? b.label.toLowerCase().indexOf(b.key) : -1;
+    if (i >= 0) {
+      el.append(b.label.slice(0, i));
+      const u = document.createElement('u');
+      u.textContent = b.label[i];
+      el.append(u, b.label.slice(i + 1));
+    } else el.textContent = b.label;
+    foot.appendChild(el);
+  }
   const back = document.activeElement;
   box.classList.remove('hidden');
   return new Promise((resolve) => {
     const done = (answer) => {
+      if (answer === null) answer = escape;
       box.classList.add('hidden');
       box.removeEventListener('click', onClick);
       box.removeEventListener('keydown', onKey, true);
-      saveAskPending = null;
-      if (back && back.focus && answer === 'cancel') back.focus();
+      appDialogPending = null;
+      // Back to where the user was, unless the answer has already moved focus somewhere else.
+      if (back && back.focus && box.contains(document.activeElement)) back.focus();
+      if (box.contains(document.activeElement)) document.activeElement.blur(); // never leave focus in the hidden box
       resolve(answer);
     };
     const onClick = (e) => {
@@ -2563,20 +2614,54 @@ function askSaveYesNoCancel(text) {
     };
     const onKey = (e) => {
       const k = e.key.toLowerCase();
-      if (e.key === 'Escape') done('cancel');
-      else if (k === 'y') done('yes');
-      else if (k === 'n') done('no');
-      else if (e.key === 'Enter' && !e.target.closest('button')) done('yes');
-      else return;
+      const byKey = !e.ctrlKey && !e.altKey && buttons.find((b) => b.key === k);
+      if (e.key === 'Escape') done(escape);
+      else if (byKey) done(byKey.answer);
+      else if (e.key === 'Enter' && !e.target.closest('button') && primary) done(primary.dataset.answer);
+      else if (e.key === 'Tab') {
+        // Keep Tab inside the dialog.
+        const all = [...foot.querySelectorAll('button')];
+        const at = all.indexOf(document.activeElement);
+        all[(at + (e.shiftKey ? -1 : 1) + all.length) % all.length].focus();
+      } else return;
       e.preventDefault();
       e.stopPropagation();
     };
     box.addEventListener('click', onClick);
     box.addEventListener('keydown', onKey, true);
-    saveAskPending = done;
-    document.getElementById('save-ask-yes').focus();
+    appDialogPending = done;
+    (primary || foot.querySelector('button')).focus();
   });
 }
+
+/** Stand-in for the dialog plugin's ask(): Yes / No (or okLabel / cancelLabel), resolves true / false. */
+async function appAsk(text, opts = {}) {
+  if (typeof opts === 'string') opts = { title: opts };
+  const ok = opts.okLabel || 'Yes';
+  const cancel = opts.cancelLabel || 'No';
+  const answer = await showAppDialog({
+    title: opts.title,
+    text,
+    kind: opts.kind === 'warning' || opts.kind === 'error' ? opts.kind : 'question',
+    buttons: [
+      { answer: 'yes', label: ok, key: ok === 'Yes' ? 'y' : undefined, primary: true },
+      { answer: 'no', label: cancel, key: cancel === 'No' ? 'n' : undefined },
+    ],
+    escape: 'no',
+  });
+  return answer === 'yes';
+}
+
+/** Stand-in for the dialog plugin's message(): one OK button. */
+async function appMessage(text, opts = {}) {
+  if (typeof opts === 'string') opts = { title: opts };
+  await showAppDialog({ title: opts.title, text, kind: opts.kind || 'info', buttons: [{ answer: 'ok', label: 'OK', primary: true }], escape: 'ok' });
+}
+// Every existing dialogApi.ask / dialogApi.message call (and the tests that replace them) goes
+// through the in-window dialog. File pickers (open / save) stay the Windows ones.
+dialogApi.ask = appAsk;
+dialogApi.confirm = appAsk;
+dialogApi.message = appMessage;
 
 async function closeTab(id) {
   const doc = docs.find((d) => d.id === id);

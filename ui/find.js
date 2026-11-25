@@ -58,6 +58,8 @@ const findState = {
   maximised: false,
   navLine: null, // { docId, line } briefly highlighted in the editor after jumping to a row
   colWidths: { line: 70, time: 170, file: 160 },
+  inSel: null, // { docId, s, e }: "In selection" is on, and this is the text it searches
+  history: { find: [], replace: [] }, // most recent first
 };
 
 /* ---------- line index (per document, cached by content) ---------- */
@@ -261,12 +263,14 @@ function hideMatchers() {
 }
 
 /**
- * Basic mode: the Find text literally, case-insensitive (as before).
- * Advanced mode: comma-separated terms (any of them), or a regular expression, with Match case / Whole word.
+ * Basic mode: the Find text as one term (or a regular expression).
+ * Advanced mode: comma-separated terms (any of them), wildcards, or a regular expression.
+ * Match case / Whole word / Regex apply in both (the Aa / ab / .* buttons on the find bar are the
+ * same settings as the checkboxes in the Advanced pane).
  */
 function buildMatcher() {
   const adv = advancedOn();
-  const o = { text: findInput.value, adv, mc: adv && advCase.checked, ww: adv && advWord.checked, re: adv && advRegex.checked, wc: adv && !advRegex.checked && advWild.checked };
+  const o = { text: findInput.value, adv, mc: advCase.checked, ww: advWord.checked, re: advRegex.checked, wc: adv && !advRegex.checked && advWild.checked };
   const key = JSON.stringify(o);
   if (matcherCache.key === key) return matcherCache.value;
   let value = null;
@@ -864,7 +868,8 @@ function adjustLineAnchors(doc, oldText, newText) {
   const hasRemoved = doc.removedLines && doc.removedLines.size;
   const hasMatches = doc.id === activeId && findState.matches.length > 0;
   const hasDiag = !!(doc.diag && doc.diag.list.length);
-  if (!hasBm && !hasRemoved && !hasMatches && !hasDiag) return;
+  const hasSel = !!(findState.inSel && findState.inSel.docId === doc.id);
+  if (!hasBm && !hasRemoved && !hasMatches && !hasDiag && !hasSel) return;
   let p = 0;
   const min = Math.min(oldText.length, newText.length);
   while (p < min && oldText.charCodeAt(p) === newText.charCodeAt(p)) p++;
@@ -875,6 +880,7 @@ function adjustLineAnchors(doc, oldText, newText) {
     sn--;
   }
   if (hasMatches) shiftFindMatches(p, so, sn - so);
+  if (hasSel) shiftInSelection(p, so, sn - so);
   if (hasDiag) shiftDiagnostics(doc, p, so, sn - so);
   if (!hasBm && !hasRemoved) return;
   const countNl = (t, a, b) => {
@@ -972,6 +978,8 @@ function openFindBar(advanced) {
 }
 
 function closeFindBar() {
+  rememberSearch();
+  setInSelection(null);
   findBar.classList.add('hidden');
   applyAdvancedVisibility();
   findState.matches = [];
@@ -1016,8 +1024,9 @@ function recomputeMatches(reveal) {
   const doc = getActive();
   const m = buildMatcher();
   let list = [];
+  if (findState.inSel && (!doc || findState.inSel.docId !== doc.id)) setInSelection(null); // another tab
   if (doc && m && m.re && !findBar.classList.contains('hidden')) {
-    list = findAllIn(doc.content, m.re, 20000);
+    list = inSelectionOnly(doc, findAllIn(doc.content, m.re, 20000));
     if (advancedActive()) {
       // In Advanced mode, Up/Down and Replace only visit lines that are listed (From/To/Hide/removed apply).
       const allowed = new Set(findState.rows.filter((r) => r.doc === doc).map((r) => r.line));
@@ -1041,9 +1050,138 @@ function recomputeMatches(reveal) {
 }
 
 function updateFindStatus(m) {
+  const where = findState.inSel ? ' in selection' : '';
   if (m && m.error) findStatus.textContent = '⚠ Invalid regex';
-  else if (findState.matches.length) findStatus.textContent = findState.index + 1 + ' of ' + fmtCount(findState.matches.length);
-  else findStatus.textContent = findInput.value ? 'No matches' : '';
+  else if (findState.matches.length) findStatus.textContent = findState.index + 1 + ' of ' + fmtCount(findState.matches.length) + where;
+  else findStatus.textContent = findInput.value ? 'No matches' + where : '';
+}
+
+/* ---------- In selection ---------- */
+
+/** Only the hits inside the "In selection" text, when that is on for this tab. */
+function inSelectionOnly(doc, hits) {
+  const r = findState.inSel;
+  if (!r || r.docId !== doc.id) return hits;
+  return hits.filter((h) => h.s >= r.s && h.e <= r.e);
+}
+
+function setInSelection(range) {
+  findState.inSel = range;
+  document.getElementById('find-insel').setAttribute('aria-pressed', range ? 'true' : 'false');
+}
+
+/** The In selection button: on = remember the editor's selection now (moving to a match changes it later). */
+function toggleInSelection() {
+  if (findState.inSel) {
+    setInSelection(null);
+  } else {
+    const doc = getActive();
+    if (!doc) return;
+    if (layoutMode === 'preview-only') {
+      flashFindStatus('In selection works on the editor text: switch to Edit or Split view, select some text, then try again.');
+      return;
+    }
+    const s = editor.selectionStart;
+    const e = editor.selectionEnd;
+    if (e <= s) {
+      flashFindStatus('Select some text in the editor first, then click In selection.');
+      return;
+    }
+    setInSelection({ docId: doc.id, s, e });
+  }
+  refreshFind(true);
+}
+
+/** Keeps the In selection range on the same text while it is edited (e.g. by Replace All). */
+function shiftInSelection(from, to, delta) {
+  const r = findState.inSel;
+  if (to <= r.s) {
+    r.s += delta;
+    r.e += delta;
+  } else if (from < r.e) {
+    if (from < r.s) r.s = from;
+    r.e = to > r.e ? to + delta : r.e + delta;
+    if (r.e < r.s) r.e = r.s;
+  }
+}
+
+/* ---------- Bookmark All ---------- */
+
+/** Bookmarks every line with a match (Advanced filters and In selection apply), in the current colour. */
+function bookmarkAllMatches() {
+  const doc = getActive();
+  const m = buildMatcher();
+  if (findBar.classList.contains('hidden') || !doc || !m || !m.re) {
+    flashFindStatus('Type something to find first.');
+    return;
+  }
+  rememberSearch();
+  let hits = inSelectionOnly(doc, findAllIn(doc.content, m.re, 1000000));
+  const c = lineIndex(doc);
+  if (advancedActive()) {
+    const allowed = new Set(findState.rows.filter((r) => r.doc === doc).map((r) => r.line));
+    hits = hits.filter((h) => allowed.has(lineOf(c, h.s)));
+  }
+  const lines = [...new Set(hits.map((h) => lineOf(c, h.s)))];
+  if (!lines.length) {
+    flashFindStatus('No matches to bookmark.');
+    return;
+  }
+  setBookmarks(doc, lines, settings.bookmarkColour);
+  flashFindStatus('Bookmarked ' + fmtCount(lines.length) + ' line' + (lines.length === 1 ? '' : 's') + ' (' + settings.bookmarkColour.toLowerCase() + ')');
+}
+
+/* ---------- recent searches ---------- */
+
+const FIND_HISTORY_MAX = 20;
+
+function pushHistory(list, value) {
+  if (!value) return;
+  const i = list.indexOf(value);
+  if (i === 0) return;
+  if (i > 0) list.splice(i, 1);
+  list.unshift(value);
+  if (list.length > FIND_HISTORY_MAX) list.length = FIND_HISTORY_MAX;
+  scheduleSessionSave();
+}
+
+/** Called when a search is really used (Enter, F3, Replace, Bookmark All, closing the bar). */
+function rememberSearch(withReplace) {
+  pushHistory(findState.history.find, findInput.value);
+  if (withReplace) pushHistory(findState.history.replace, replaceInput.value);
+}
+
+function showFindHistory(kind) {
+  const input = kind === 'find' ? findInput : replaceInput;
+  const list = findState.history[kind];
+  const short = (v) => {
+    const one = v.replace(/\s+/g, ' ');
+    return one.length > 70 ? one.slice(0, 69) + '…' : one;
+  };
+  const items = list.length
+    ? list.map((v) => ({
+        label: short(v),
+        checked: v === input.value,
+        action: () => {
+          input.value = v;
+          input.dispatchEvent(new Event('input'));
+          input.focus();
+          input.select();
+        },
+      }))
+    : [{ label: kind === 'find' ? 'No recent searches' : 'No recent replacements', disabled: true }];
+  if (list.length)
+    items.push('sep', {
+      label: 'Clear this list',
+      action: () => {
+        findState.history[kind] = [];
+        scheduleSessionSave();
+      },
+    });
+  const box = input.parentElement.getBoundingClientRect();
+  showContextMenu(box.left, box.top, items);
+  // The find bar is at the bottom of the window: open the list upwards, above the box.
+  ctxMenu.style.top = Math.max(4, box.top - ctxMenu.offsetHeight - 2) + 'px';
 }
 
 function stepMatch(dir) {
@@ -1051,6 +1189,7 @@ function stepMatch(dir) {
     openFindBar();
     return;
   }
+  rememberSearch();
   if (!findState.matches.length) return;
   findState.index = (findState.index + dir + findState.matches.length) % findState.matches.length;
   updateFindStatus(buildMatcher());
@@ -1156,6 +1295,7 @@ function replaceCurrent() {
   const m = buildMatcher();
   const hit = findState.matches[findState.index];
   if (!doc || !m || !m.re || !hit) return;
+  rememberSearch(true);
   const keepIndex = findState.index;
   applyEdit(doc, hit.s, hit.e, replacementFor(doc.content.slice(hit.s, hit.e), m));
   refreshFind(false);
@@ -1168,11 +1308,12 @@ function replaceCurrent() {
 function replaceAll() {
   const m = buildMatcher();
   if (!m || !m.re) return;
+  rememberSearch(true);
   const targets = advancedActive() ? scopeDocs() : [getActive()].filter(Boolean);
   let count = 0;
   let tabs = 0;
   for (const doc of targets) {
-    let hits = findAllIn(doc.content, m.re, 1000000);
+    let hits = inSelectionOnly(doc, findAllIn(doc.content, m.re, 1000000));
     if (advancedActive()) {
       const allowed = new Set(findState.rows.filter((r) => r.doc === doc).map((r) => r.line));
       const c = lineIndex(doc);
@@ -1360,6 +1501,8 @@ function captureFindState() {
     sortKey: findState.sortKey,
     sortDir: findState.sortDir,
     colWidths: findState.colWidths,
+    findHistory: findState.history.find,
+    replaceHistory: findState.history.replace,
   };
 }
 
@@ -1384,6 +1527,9 @@ function restoreFindState(s) {
   if (s.sortKey) findState.sortKey = s.sortKey;
   if (s.sortDir) findState.sortDir = s.sortDir;
   if (s.colWidths) findState.colWidths = { ...findState.colWidths, ...s.colWidths };
+  const strings = (a) => (Array.isArray(a) ? a.filter((v) => typeof v === 'string' && v).slice(0, FIND_HISTORY_MAX) : []);
+  findState.history = { find: strings(s.findHistory), replace: strings(s.replaceHistory) };
+  syncFindToggles();
   advToggle.checked = !!s.advanced;
   matcherCache.key = null;
   if (s.open) {
@@ -1391,6 +1537,11 @@ function restoreFindState(s) {
     applyAdvancedVisibility();
     refreshFind(false);
   } else applyAdvancedVisibility();
+}
+
+/** Shows the Match case / Whole word / Regex settings on the find bar's buttons. */
+function syncFindToggles() {
+  for (const [id, box] of [['find-case', advCase], ['find-word', advWord], ['find-regex', advRegex]]) document.getElementById(id).setAttribute('aria-pressed', box.checked ? 'true' : 'false');
 }
 
 /* ---------- wiring ---------- */
@@ -1418,6 +1569,7 @@ function wireFind() {
       if (el === advWild && advWild.checked) advRegex.checked = false;
       matcherCache.key = null;
       advFind.placeholder = advRegex.checked ? 'regular expression' : advWild.checked ? 'term*, *term, ...' : 'term, term, ...';
+      syncFindToggles();
       refreshFind(false);
       scheduleSessionSave();
     })
@@ -1477,6 +1629,33 @@ function wireFind() {
     scheduleSessionSave();
   });
 
+  // Aa / ab / .* on the find bar: the same settings as the Advanced pane's checkboxes.
+  for (const [id, box] of [['find-case', advCase], ['find-word', advWord], ['find-regex', advRegex]]) {
+    const btn = document.getElementById(id);
+    btn.addEventListener('mousedown', (e) => e.preventDefault()); // keep typing in the Find box
+    btn.addEventListener('click', () => {
+      box.checked = !box.checked;
+      box.dispatchEvent(new Event('change'));
+    });
+  }
+  const inSelBtn = document.getElementById('find-insel');
+  inSelBtn.addEventListener('mousedown', (e) => e.preventDefault()); // keep the editor's selection
+  inSelBtn.addEventListener('click', toggleInSelection);
+  document.getElementById('find-clear').addEventListener('click', () => {
+    rememberSearch();
+    findInput.value = '';
+    findInput.dispatchEvent(new Event('input'));
+    findInput.focus();
+  });
+  document.getElementById('find-bookmark').addEventListener('click', bookmarkAllMatches);
+  for (const kind of ['find', 'replace']) {
+    const btn = document.getElementById(kind + '-hist');
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showFindHistory(kind);
+    });
+  }
   findNextBtn.addEventListener('click', () => stepMatch(1));
   findPrevBtn.addEventListener('click', () => stepMatch(-1));
   replaceOneBtn.addEventListener('click', replaceCurrent);

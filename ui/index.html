@@ -155,12 +155,20 @@
   </div>
 
   <div id="find-bar" class="find-bar hidden">
-    <input id="find-input" type="text" placeholder="Find" />
-    <input id="replace-input" type="text" placeholder="Replace" title="In Regex mode, $1, $2... insert captured groups" />
+    <span class="find-box"><input id="find-input" type="text" placeholder="Find" /><button id="find-hist" class="find-hist" title="Recent searches" aria-label="Recent searches">&#9662;</button></span>
+    <button id="find-clear" title="Clear the Find box">Clear</button>
+    <span class="find-toggles">
+      <button id="find-case" class="find-tog" aria-pressed="false" title="Match case">Aa</button>
+      <button id="find-word" class="find-tog" aria-pressed="false" title="Whole word"><u>ab</u></button>
+      <button id="find-regex" class="find-tog" aria-pressed="false" title="Regular expression">.*</button>
+      <button id="find-insel" class="find-tog" aria-pressed="false" title="In selection: select some text in the editor, then click this to find and replace only inside it"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1.5"/><path d="M4 6h8M4 8.5h8M4 11h5" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    </span>
+    <span class="find-box"><input id="replace-input" type="text" placeholder="Replace" title="In Regex mode, $1, $2... insert captured groups" /><button id="replace-hist" class="find-hist" title="Recent replacements" aria-label="Recent replacements">&#9662;</button></span>
     <button id="find-prev" title="Previous match (Shift+F3)">&#8593;</button>
     <button id="find-next" title="Next match (F3)">&#8595;</button>
     <button id="replace-one" title="Replace this match">Replace</button>
     <button id="replace-all" title="Replace every match (in Advanced mode: only in the listed lines)">Replace All</button>
+    <button id="find-bookmark" title="Bookmark every line with a match, in the current bookmark colour">Bookmark All</button>
     <label class="find-adv" title="Open the Advanced pane: line list with From/To/Find/Hide filters, regex, bookmarks (Ctrl+Shift+F)"><input id="find-advanced" type="checkbox" /> Advanced</label>
     <span id="find-status"></span>
     <button id="find-close" title="Close (Esc)">&#10005;</button>
@@ -308,7 +316,7 @@
       </div>
       <div class="about-body">
         <img src="app-icon.png" alt="" width="64" height="64" />
-        <div class="about-name">notepad.md <span id="about-version">v1.4.1</span></div>
+        <div class="about-name">notepad.md <span id="about-version">v1.4.2</span></div>
         <a href="https://github.com/mccabedd/notepad.md" id="about-link">https://github.com/mccabedd/notepad.md</a>
         <div>Created by David McCabe</div>
         <button id="about-update" class="primary">Check for Updates</button>

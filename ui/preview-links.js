@@ -72,9 +72,22 @@ function hideLinkPopup() {
   linkPopFor = null;
 }
 
+/** True when the link's text already shows its whole address (a pasted URL), so no box is needed. */
+function linkShowsFullUrl(a, href) {
+  const norm = (s) => s.trim().replace(/^mailto:/i, '').replace(/\/+$/, '').toLowerCase();
+  const text = a.textContent || '';
+  if (!text.trim() || text.includes('…')) return false;
+  let decoded = href;
+  try {
+    decoded = decodeURI(href);
+  } catch (_) {}
+  return norm(text) === norm(href) || norm(text) === norm(decoded);
+}
+
 function showLinkPopup(a) {
   const href = a.getAttribute('href') || '';
   if (!/^(https?:|mailto:)/i.test(href)) return;
+  if (linkShowsFullUrl(a, href)) return;
   hideLinkPopup();
   linkPopFor = a;
   const pop = document.createElement('div');

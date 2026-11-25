@@ -29,8 +29,8 @@ Eval "spell.userWords.clear(); true" | Out-Null
 J "clipboard.writeText = async (t) => { window.__clip = t; }; clipboard.readText = async () => window.__clip; return 1" | Out-Null
 
 # ---------- layout: find bar at the bottom ----------
-$r = J "openFindBar(); const f=findBar.getBoundingClientRect(), w=document.querySelector('.main-area').getBoundingClientRect(), s=document.querySelector('.statusbar').getBoundingClientRect(); return (f.top >= w.bottom - 1) + '|' + (f.bottom <= s.top + 1) + '|' + [...findBar.children].map(c=>c.id||c.textContent.trim()).join(',')"
-T 'Find bar sits at the bottom, above status bar' $r ($r -like 'true|true|find-input,replace-input,find-prev,find-next,replace-one,replace-all,Advanced,find-status,find-close')
+$r = J "openFindBar(); const f=findBar.getBoundingClientRect(), w=document.querySelector('.main-area').getBoundingClientRect(), s=document.querySelector('.statusbar').getBoundingClientRect(); return (f.top >= w.bottom - 1) + '|' + (f.bottom <= s.top + 1) + '|' + [...findBar.querySelectorAll('input,button')].map(c=>c.id).join(',')"
+T 'Find bar sits at the bottom, above status bar' $r ($r -like 'true|true|find-input,find-hist,find-clear,find-case,find-word,find-regex,find-insel,replace-input,replace-hist,find-prev,find-next,replace-one,replace-all,find-bookmark,find-advanced,find-close')
 J "closeFindBar(); return 1" | Out-Null
 
 # ---------- per-tab font size, Ctrl+wheel, Ctrl+0 ----------

@@ -66,6 +66,11 @@ Built with [Tauri](https://tauri.app) (Rust backend + the OS's built-in WebView2
 
 ### Find, Advanced find and bookmarks
 - **Find bar at the bottom** (`Ctrl+F`): Find, Replace, ↑ / ↓ (`Shift+F3` / `F3`), Replace, Replace All, and an **Advanced** checkbox (`Ctrl+Shift+F`). All matches are highlighted in the editor and preview.
+  - **Clear** empties the Find box.
+  - **Aa** (Match case), **ab** (Whole word) and **.\*** (Regular expression) are the same settings as the Advanced pane's checkboxes.
+  - **In selection**: select text in the editor, then click it. Find and Replace All then work only inside that text, until you click it again.
+  - **▾** in the Find and Replace boxes lists your last 20 searches and replacements, remembered between sessions.
+  - **Bookmark All** bookmarks every line with a match, in the current bookmark colour.
 - **Advanced pane** — a resizable list of lines, modelled on the Noxturnal Monitoring Tool's Timeline:
   - Filters: **From / To** (line numbers like `120` / `#120`, or times like `14:30`, `2024-10-14 14:30:05`, `20241014`; inclusive to the precision typed; lines without a timestamp inherit the previous one), **Find** (comma-separated terms, any of them), **Hide** (comma-separated terms to exclude), Match case, Whole word, Regex, **Wildcard** (`*` stands for any characters within a line, e.g. `error*timeout`; Regex and Wildcard are either/or), and *This tab* / *All open tabs*.
   - Columns: Line #, Time (detected timestamps), File (all-tabs mode), Text — click a header to sort, drag a header edge to resize.
