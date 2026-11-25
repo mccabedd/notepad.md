@@ -18,6 +18,9 @@ $W = "$sp\work5"; Remove-Item $W -Recurse -Force -ErrorAction SilentlyContinue; 
 # Registry writes go to a throwaway key, never the real file associations.
 $TestReg = 'Software\NotepadMD-Test\Classes'
 $env:NOTEPADMD_REG_ROOT = $TestReg
+# The real associations (notepad.md may really be registered on this PC): they must be exactly the same afterwards.
+function Get-RealAssoc { $k = 'HKCU:\Software\Classes\NotepadMD.Document'; if (-not (Test-Path $k)) { return 'none' }; return [string](Get-ItemProperty "$k\shell\open\command" -ErrorAction SilentlyContinue).'(default)' }
+$realBefore = Get-RealAssoc
 Remove-Item "HKCU:\Software\NotepadMD-Test" -Recurse -Force -ErrorAction SilentlyContinue
 
 Start-App $Exe $null
@@ -81,8 +84,8 @@ $psProg = (Get-Item "$root\.ps1\OpenWithProgids" -ErrorAction SilentlyContinue).
 $types = @((Get-Item "$root\Applications\notepad.md.exe\SupportedTypes" -ErrorAction SilentlyContinue).Property).Count
 $expected = [int](J "return supportedExtensions().length")
 T 'Register writes ProgID + Open-with entries for every type' "msg=$r cmd=$cmd md=$mdProg ps1=$psProg types=$types/$expected" ($cmd -eq "`"$exeReal`" `"%1`"" -and $mdProg -and $psProg -and $types -eq $expected -and $r -eq "Registered $expected file types.|$expected of $expected registered")
-$real = Test-Path 'HKCU:\Software\Classes\NotepadMD.Document'
-T 'Real file associations untouched by the test' "real ProgID exists=$real" (-not $real)
+$realAfter = Get-RealAssoc
+T 'Real file associations untouched by the test' "before=$realBefore after=$realAfter" ($realAfter -eq $realBefore -and $realAfter -notlike "*$exeReal*")
 $r = J "await setFileTypes(supportedExtensions(), false); return ftCount.textContent"
 $left = (Test-Path "$root\NotepadMD.Document") -or ((Get-Item "$root\.md\OpenWithProgids" -ErrorAction SilentlyContinue).Property -contains 'NotepadMD.Document') -or (Test-Path "$root\Applications\notepad.md.exe")
 T 'Unregister removes them again' "status=$r leftovers=$left" ($r -like '0 of * registered' -and -not $left)
@@ -136,8 +139,8 @@ Copy-Item $Exe "$rel\new.exe"
 Write-Release 'v99.0.0' 'sha256:0000000000000000000000000000000000000000000000000000000000000000' (Get-Item "$rel\new.exe").Length
 $r = J "const p = checkForUpdates(); await new Promise(r=>setTimeout(r,1500)); return aboutStatus.textContent"
 Start-Sleep -Milliseconds 300
-$askShown = Has-Dialog
-Press-DialogButton 1 | Out-Null   # "Update now"
+# The update question is notepad.md's own dialog (since v1.4.2): check it's showing, then click "Update now".
+$askShown = (J "const box = document.getElementById('save-ask'); const b = document.getElementById('save-ask-yes'); if (box.classList.contains('hidden') || !b || b.textContent !== 'Update now') return 'no'; b.click(); return 'yes'") -eq 'yes'
 Start-Sleep -Milliseconds 3000
 $r = J "return aboutStatus.textContent + '|' + aboutStatus.classList.contains('error')"
 T 'Corrupted download is rejected (checksum), app keeps running' "ask=$askShown $r" ($askShown -and $r -eq 'The download failed its checksum test, so it was not installed.|true' -and -not $script:proc.HasExited)
@@ -156,8 +159,8 @@ Start-Sleep -Milliseconds 800
 $oldPid = $script:proc.Id
 J "await showAbout(); checkForUpdates(); return 1" | Out-Null
 Start-Sleep -Milliseconds 1500
-$askShown = Has-Dialog
-Press-DialogButton 1 | Out-Null   # "Update now"
+# The update question is notepad.md's own dialog (since v1.4.2): check it's showing, then click "Update now".
+$askShown = (J "const box = document.getElementById('save-ask'); const b = document.getElementById('save-ask-yes'); if (box.classList.contains('hidden') || !b || b.textContent !== 'Update now') return 'no'; b.click(); return 'yes'") -eq 'yes'
 $gone = $script:proc.WaitForExit(15000)
 Start-Sleep -Milliseconds 2500
 $newProc = Get-Process notepad.md -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq "$appDir\notepad.md.exe" -and $_.Id -ne $oldPid } | Select-Object -First 1

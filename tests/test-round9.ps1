@@ -21,18 +21,13 @@ J "setLayoutMode('edit-only'); editor.value='Ticket: https://example.com/browse/
 Start-Sleep -Milliseconds 300
 $p = Pt "editorHighlight.querySelector('.ov-url').getClientRects()[0]"
 
+# Since v1.0.3 a link gets WebView2's own right-click menu, with the link items added by linkmenu.rs
+# (test-round10 clicks those items with the real mouse). Here: the app's own menu stays out of the way.
+J "window.__ctxPrevented=null; editor.addEventListener('contextmenu', (e) => setTimeout(() => (window.__ctxPrevented = e.defaultPrevented)), { once: true }); return 1" | Out-Null
 Click $p.x $p.y 'right'; Start-Sleep -Milliseconds 300
-$r = J "return [...ctxMenu.querySelectorAll('.ctx-label')].map(e=>e.textContent).join('|') + '|hidden=' + ctxMenu.classList.contains('hidden')"
-T 'Right-click on a link shows the link menu' $r ($r -eq 'Open Link in New Window|Save Link As...|Copy Link|hidden=false')
-$q = Pt "[...ctxMenu.querySelectorAll('button')].find(b=>b.textContent.includes('Copy Link')).getBoundingClientRect()"
-Click $q.x $q.y; Start-Sleep -Milliseconds 300
-$r = J "return String(window.__copied)"
-T 'Copy Link copies the whole address' $r ($r -eq 'https://example.com/browse/MF-2741')
-Click $p.x $p.y 'right'; Start-Sleep -Milliseconds 300
-$q = Pt "[...ctxMenu.querySelectorAll('button')].find(b=>b.textContent.includes('Open Link')).getBoundingClientRect()"
-Click $q.x $q.y; Start-Sleep -Milliseconds 300
-$r = J "return String(window.__opened)"
-T 'Open Link in New Window opens it' $r ($r -eq 'https://example.com/browse/MF-2741')
+$r = J "return 'hidden=' + ctxMenu.classList.contains('hidden') + '|prevented=' + window.__ctxPrevented"
+T 'Right-click on a link leaves the menu to WebView2 (link items added there)' $r ($r -eq 'hidden=true|prevented=false')
+Click 0 0; Start-Sleep -Milliseconds 300   # close that menu
 
 J "window.__opened=null; return 1" | Out-Null
 Click $p.x $p.y; Start-Sleep -Milliseconds 400
@@ -43,10 +38,12 @@ DblClick $p.x $p.y; Start-Sleep -Milliseconds 300
 $r = J "return String(window.__opened) + '|' + (editor.selectionStart===editor.selectionEnd)"
 T 'Double-click on a link opens it' $r ($r -eq 'https://example.com/browse/MF-2741|true')
 J "window.__opened=null; return 1" | Out-Null
-$w = Pt "(()=>{const r=document.createRange(); const t=[...editorHighlight.childNodes].find(n=>n.nodeType===3 && n.nodeValue.includes('more')); const i=t.nodeValue.indexOf('more'); r.setStart(t,i); r.setEnd(t,i+4); return r.getClientRects()[0];})()"
+# The coloured layer may wrap each line in its own block, so search all its text nodes.
+$w = Pt "(()=>{const r=document.createRange(); const tw=document.createTreeWalker(editorHighlight, NodeFilter.SHOW_TEXT); let t; while ((t = tw.nextNode()) && !t.nodeValue.includes('more')); const i=t.nodeValue.indexOf('more'); r.setStart(t,i); r.setEnd(t,i+4); return r.getClientRects()[0];})()"
 DblClick $w.x $w.y; Start-Sleep -Milliseconds 300
 $r = J "return String(window.__opened) + '|' + JSON.stringify(editor.value.slice(editor.selectionStart, editor.selectionEnd))"
-T 'Double-click on ordinary text still selects the word' $r ($r -eq 'null|"more"')
+# Windows' double-click also takes the space after the word.
+T 'Double-click on ordinary text still selects the word' $r ($r -eq 'null|"more"' -or $r -eq 'null|"more "')
 
 Click $p.x $p.y 'right'; Start-Sleep -Milliseconds 200
 J "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'})); return 1" | Out-Null
@@ -58,11 +55,13 @@ $r = J "return [...ctxMenu.querySelectorAll('.ctx-label')].map(e=>e.textContent)
 T 'Spelling menu still shows on a misspelt word' $r ($r -eq 'misspelled')
 
 # Save Link As: the download command (a tiny public page)
+New-Item -ItemType Directory -Force "$sp\work8" | Out-Null   # round8 makes it, but that one only runs with -Interactive
 $out = "$sp\work8\saved-link.html"; Remove-Item $out -ErrorAction SilentlyContinue
 $o = $out.Replace('\', '\\')
-$r = J "return String(await invoke('cmd_download_url', { url: 'https://example.com/', path: '$o' }))"
+$r = J "try { return String(await invoke('cmd_download_url', { url: 'https://example.com/', path: '$o' })) } catch (e) { return 'ERR ' + String(e) }"
+if ($r -notmatch '^\d+$') { "Save Link As error: $r" }
 $size = if (Test-Path $out) { (Get-Item $out).Length } else { 0 }
-T 'Save Link As downloads the page to the chosen file' "bytes=$r file=$size" ([int]$r -gt 100 -and $size -eq [int]$r -and -not (Test-Path "$out.part"))
+T 'Save Link As downloads the page to the chosen file' "bytes=$r file=$size" ($r -match '^\d+$' -and [int]$r -gt 100 -and $size -eq [int]$r -and -not (Test-Path "$out.part"))
 $r = J "try { await invoke('cmd_download_url', { url: 'file:///C:/Windows/win.ini', path: '$o' }); return 'allowed'; } catch (e) { return 'refused' }"
 T 'Only http(s) links can be saved' $r ($r -eq 'refused')
 

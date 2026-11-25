@@ -7,10 +7,10 @@ $sp = . "$PSScriptRoot\testdir.ps1"
 New-Item -ItemType Directory -Force "$sp\bin", "$sp\results" | Out-Null
 Copy-Item $Exe "$sp\bin\notepad.md.exe" -Force   # some suites need this exact file name
 $exeCopy = "$sp\bin\notepad.md.exe"
-$suites = 'test-hardening','test-polish','test-v109','test-v110','test-bookmarks','test-validation','test-validation2','test-rebrand','test-sync','test-v141','test-v142','test-round15','test-round14','test-round13','test-all','test-features','test-round3','test-round4','test-round5','test-round6','test-round7','test-round9','test-round10','test-round11'
-# These press real keys on the Windows keyboard: only run them when nobody is using the PC.
-if ($Interactive) { $suites += 'test-round8', 'test-round12', 'test-layout' }
-if ($Only) { $suites = @($suites) + @('test-round8', 'test-round12', 'test-layout') | Where-Object { $Only -contains $_ } | Select-Object -Unique }
+$suites = 'test-hardening','test-polish','test-v109','test-v110','test-bookmarks','test-validation','test-validation2','test-rebrand','test-sync','test-v141','test-v142','test-round15','test-round14','test-round13','test-all','test-features','test-round3','test-round4','test-round5','test-round6','test-round7','test-round9','test-round11'
+# These press real keys or move the real mouse: only run them when nobody is using the PC (and the screen isn't locked).
+if ($Interactive) { $suites += 'test-round8', 'test-round10', 'test-round12', 'test-layout' }
+if ($Only) { $suites = @($suites) + @('test-round8', 'test-round10', 'test-round12', 'test-layout') | Where-Object { $Only -contains $_ } | Select-Object -Unique }
 $summary = "$sp\results\summary.txt"
 "Run started $(Get-Date -Format s) with $Exe" | Set-Content $summary
 foreach ($t in $suites) {

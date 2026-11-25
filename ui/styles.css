@@ -38,6 +38,7 @@
   --fg-muted: #9a9a9a;
   --border: #3a3a3a;
   --accent: #4ea1ff;
+  --caret: #6db1ff; /* the text cursor: brighter than the accent, so it's easy to see on the dark background */
   --scroll-thumb: #4a4a4a;
   --scroll-thumb-hover: #5e5e5e;
   --code-bg: #2a2a2a;
@@ -688,7 +689,7 @@ body {
   outline: none;
   background: transparent;
   color: var(--edit-fg, var(--fg));
-  caret-color: var(--accent);
+  caret-color: var(--caret, var(--accent));
   z-index: 1;
 }
 
@@ -760,7 +761,7 @@ body.nowrap .preview.code-view pre code {
   padding: 14px 24px;
   background: var(--preview-bg, var(--bg-alt));
   color: var(--preview-fg, var(--fg));
-  caret-color: var(--accent);
+  caret-color: var(--caret, var(--accent));
   font-family: var(--preview-font-family, -apple-system, "Segoe UI", Tahoma, Arial, sans-serif);
   font-weight: var(--preview-font-weight, 400);
   font-style: var(--preview-font-style, normal);
