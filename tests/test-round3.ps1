@@ -83,7 +83,7 @@ $r = J @"
 await openPath('$(P 'forum.bbcode')'); setLayoutMode('split-ep');
 await new Promise(r=>requestAnimationFrame(()=>r()));
 const d=getActive();
-return JSON.stringify({lang:d.lang, tags: editorHighlight.querySelectorAll('.hljs-tag').length, editable: preview.getAttribute('contenteditable'),
+return JSON.stringify({lang:d.lang, tags: edLayer().querySelectorAll('.hljs-tag').length, editable: preview.getAttribute('contenteditable'),
  strong: !!preview.querySelector('strong'), link: [...preview.querySelectorAll('a')].map(a=>a.getAttribute('href')).join(' '),
  quote: (preview.querySelector('blockquote')||{}).textContent, li: preview.querySelectorAll('li').length, color: !!preview.querySelector('span[style*=red]'),
  code: (preview.querySelector('pre code')||{}).textContent, script: preview.querySelectorAll('script').length, scriptText: preview.textContent.includes('<script>alert'),
@@ -95,7 +95,7 @@ T 'BBCode: formatting renders' "strong=$($o.strong) li=$($o.li) color=$($o.color
 T 'BBCode: only safe links' "hrefs=[$($o.link)]" ($o.link -eq 'https://example.com https://example.org')
 T 'BBCode: no HTML injection, code kept literal' "scripts=$($o.script) literal=$($o.scriptText) code='$($o.code)'" ($o.script -eq 0 -and $o.scriptText -and $o.code -eq 'if (a < b) { x = "<script>"; }')
 Start-Sleep -Milliseconds 1500
-$r = J "return [...editorHighlight.querySelectorAll('.spell-err')].map(s=>s.dataset.w).join(',')"
+$r = J "return [...edLayer().querySelectorAll('.spell-err')].map(s=>s.dataset.w).join(',')"
 T 'BBCode: spellcheck text, not tags/values' $r ($r -match 'Helo' -and $r -notmatch 'larrge|spoiler|quote')
 Shot 'bbcode'
 
@@ -141,12 +141,12 @@ const row=[...advRows.querySelectorAll('.adv-row')].find(r=>r.querySelector('.c-
 const rc=row.getBoundingClientRect(); return Math.round(rc.left+200)+','+Math.round(rc.top+10);
 "@
 $x, $y = $r.Split(','); Mouse 'mousePressed' ([int]$x) ([int]$y); Mouse 'mouseReleased' ([int]$x) ([int]$y); Wait1
-$r = J "const c=lineIndex(getActive()); return lineOf(c, editor.selectionStart)+1 + '|' + [...editorHighlight.querySelectorAll('.nav-line')].map(e => e.textContent).join('')"
+$r = J "const c=lineIndex(getActive()); return lineOf(c, editor.selectionStart)+1 + '|' + [...edLayer().querySelectorAll('.nav-line')].map(e => e.textContent).join('')"
 T 'Clicking a row selects that line in the editor' $r ($r -eq '4|2024-10-14 14:30:05,431 ERROR Move Operation failed')
 
 # keyboard: Ctrl+Shift+B bookmarks, Down, Ctrl+C
 Send-Key @('CTRL','SHIFT') 'B' 'KeyB' 0x42
-$r = J "return JSON.stringify(getActive().bookmarks) + '|' + !!advRows.querySelector('.adv-row.bm-green') + '|' + !!editorHighlight.querySelector('.bm-line.bm-green')"
+$r = J "return JSON.stringify(getActive().bookmarks) + '|' + !!advRows.querySelector('.adv-row.bm-green') + '|' + !!edLayer().querySelector('.bm-line.bm-green')"
 T 'Ctrl+Shift+B in the list bookmarks the line (green), shown in list + editor' $r ($r -eq '{"3":"Green"}|true|true')
 Send-Key @() 'ArrowDown' 'ArrowDown' 0x28; Send-Key @('SHIFT') 'ArrowDown' 'ArrowDown' 0x28
 Send-Key @('CTRL') 'c' 'KeyC' 0x43
@@ -214,7 +214,7 @@ editor.focus(); editor.setSelectionRange(0,0); document.execCommand('insertText'
 await new Promise(r=>setTimeout(r,400)); return JSON.stringify(getActive().bookmarks);
 "@
 T 'Bookmarks move down when a line is inserted above' $r ($r -eq '{"2":"Red","3":"Red","4":"Green","8":"Orange"}')
-J "document.execCommand('undo'); await new Promise(r=>setTimeout(r,300)); return 1" | Out-Null
+J "runToolbarCommand('undo'); await new Promise(r=>setTimeout(r,300)); return 1" | Out-Null
 
 # Ctrl+F2 / F2 in the editor
 $r = J @"
@@ -256,7 +256,7 @@ J "findInput.value='INFO'; findInput.dispatchEvent(new Event('input')); await ne
 $r = J @"
 const pos=[]; for (let i=0;i<3;i++){ document.dispatchEvent(new KeyboardEvent('keydown',{key:'F3',bubbles:true})); pos.push(lineOf(lineIndex(getActive()), findState.matches[findState.index].s)+1);}
 document.dispatchEvent(new KeyboardEvent('keydown',{key:'F3',shiftKey:true,bubbles:true})); pos.push(lineOf(lineIndex(getActive()), findState.matches[findState.index].s)+1);
-return pos.join(',') + '|' + findStatus.textContent + '|' + editorHighlight.querySelectorAll('.find-hit').length + '/' + editorHighlight.querySelectorAll('.find-current').length;
+return pos.join(',') + '|' + findStatus.textContent + '|' + edLayer().querySelectorAll('.find-hit').length + '/' + edLayer().querySelectorAll('.find-current').length;
 "@
 T 'F3 / Shift+F3 step through matches; all hits highlighted' $r ($r -eq '5,7,1,7|3 of 3|3/1')
 J "advToggle.checked=true; advToggle.dispatchEvent(new Event('change')); findInput.value=''; findInput.dispatchEvent(new Event('input')); await new Promise(r=>setTimeout(r,300)); return 1" | Out-Null

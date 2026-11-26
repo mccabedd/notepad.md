@@ -114,6 +114,7 @@ function textOffsetOf(root, node, offset) {
 
 /** y (in the editor's scrolled content) of a source offset. */
 function editorYForOffset(pos) {
+  if (editor.isCodeMirror) return editor.api.yForOffset(pos);
   const v = editor.value;
   let line = 0;
   for (let i = v.indexOf('\n'); i !== -1 && i < pos; i = v.indexOf('\n', i + 1)) line++;
@@ -128,6 +129,7 @@ function editorYForOffset(pos) {
 
 /** The source offset of the line shown at y in the editor's scrolled content. */
 function offsetForEditorY(y) {
+  if (editor.isCodeMirror) return editor.api.offsetForY(y);
   const v = editor.value;
   const kids = editorHighlight.children;
   let line = 0;
@@ -233,7 +235,7 @@ function onEditorCaret() {
   caretFrame = requestAnimationFrame(() => {
     caretFrame = 0;
     const doc = getActive();
-    if (doc && document.activeElement === editor) revealInPreview(doc, editor.selectionStart);
+    if (doc && editorHasFocus()) revealInPreview(doc, editor.selectionStart);
   });
 }
 

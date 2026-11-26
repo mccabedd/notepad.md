@@ -257,7 +257,19 @@ fn main() {
         return; // handed to the running window
     }
 
+    // codemirror-prototype branch: NOTEPADMD_EDITOR=textarea (or codemirror) chooses the editor for
+    // this run (the tests run both). Set before any page script runs; see ui/editor-facade.js.
+    let editor_mode = match std::env::var("NOTEPADMD_EDITOR").as_deref() {
+        Ok("textarea") => "textarea",
+        Ok("codemirror") => "codemirror",
+        _ => "",
+    };
     tauri::Builder::default()
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("np-editor-mode")
+                .js_init_script(format!("window.__NP_EDITOR_MODE = '{}';", editor_mode))
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .register_uri_scheme_protocol("localimg", |_ctx, req| instance::serve_local_image(&req))

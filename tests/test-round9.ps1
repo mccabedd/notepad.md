@@ -19,7 +19,7 @@ Start-App $Exe $null
 Focus-App | Out-Null
 J "setLayoutMode('edit-only'); editor.value='Ticket: https://example.com/browse/MF-2741 and more text'; editor.dispatchEvent(new Event('input')); window.__opened=null; openUrl=(u)=>{window.__opened=u}; window.__copied=null; clipboard.writeText=async (t)=>{window.__copied=t}; return 1" | Out-Null
 Start-Sleep -Milliseconds 300
-$p = Pt "editorHighlight.querySelector('.ov-url').getClientRects()[0]"
+$p = Pt "edLayer().querySelector('.ov-url').getClientRects()[0]"
 
 # Since v1.0.3 a link gets WebView2's own right-click menu, with the link items added by linkmenu.rs
 # (test-round10 clicks those items with the real mouse). Here: the app's own menu stays out of the way.
@@ -39,7 +39,7 @@ $r = J "return String(window.__opened) + '|' + (editor.selectionStart===editor.s
 T 'Double-click on a link opens it' $r ($r -eq 'https://example.com/browse/MF-2741|true')
 J "window.__opened=null; return 1" | Out-Null
 # The coloured layer may wrap each line in its own block, so search all its text nodes.
-$w = Pt "(()=>{const r=document.createRange(); const tw=document.createTreeWalker(editorHighlight, NodeFilter.SHOW_TEXT); let t; while ((t = tw.nextNode()) && !t.nodeValue.includes('more')); const i=t.nodeValue.indexOf('more'); r.setStart(t,i); r.setEnd(t,i+4); return r.getClientRects()[0];})()"
+$w = Pt "(()=>{const r=document.createRange(); const tw=document.createTreeWalker(edLayer(), NodeFilter.SHOW_TEXT); let t; while ((t = tw.nextNode()) && !t.nodeValue.includes('more')); const i=t.nodeValue.indexOf('more'); r.setStart(t,i); r.setEnd(t,i+4); return r.getClientRects()[0];})()"
 DblClick $w.x $w.y; Start-Sleep -Milliseconds 300
 $r = J "return String(window.__opened) + '|' + JSON.stringify(editor.value.slice(editor.selectionStart, editor.selectionEnd))"
 # Windows' double-click also takes the space after the word.
@@ -49,7 +49,7 @@ Click $p.x $p.y 'right'; Start-Sleep -Milliseconds 200
 J "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'})); return 1" | Out-Null
 J "editor.value='This is mispeled https://example.com/'; editor.dispatchEvent(new Event('input')); return 1" | Out-Null
 Start-Sleep -Milliseconds 1500
-$s = Pt "editorHighlight.querySelector('.spell-err').getClientRects()[0]"
+$s = Pt "edLayer().querySelector('.spell-err').getClientRects()[0]"
 Click $s.x $s.y 'right'; Start-Sleep -Milliseconds 1200
 $r = J "return [...ctxMenu.querySelectorAll('.ctx-label')].map(e=>e.textContent)[0]"
 T 'Spelling menu still shows on a misspelt word' $r ($r -eq 'misspelled')

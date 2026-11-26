@@ -567,6 +567,10 @@ function rangeAtTextOffset(root, pos) {
 }
 
 function scrollEditorToOffset(pos) {
+  if (editor.isCodeMirror) {
+    editor.api.scrollToOffset(pos);
+    return;
+  }
   let y = null;
   if (!editorHighlight.classList.contains('hidden')) {
     const r = rangeAtTextOffset(editorHighlight, pos);
@@ -1272,7 +1276,11 @@ function applyEdit(doc, start, end, text) {
     // Only go through execCommand (which keeps undo) when the editor can really take focus:
     // otherwise insertText would type into whatever else has focus, e.g. the Replace box.
     let done = false;
-    if (layoutMode !== 'preview-only') {
+    if (editor.isCodeMirror) {
+      // CodeMirror takes the edit without the focus (the Replace box keeps it), on its undo stack.
+      editor.setSelectionRange(start, end);
+      done = editor.insertText(text);
+    } else if (layoutMode !== 'preview-only') {
       editor.focus();
       if (document.activeElement === editor) {
         editor.setSelectionRange(start, end);

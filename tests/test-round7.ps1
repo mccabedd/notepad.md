@@ -38,7 +38,7 @@ Start-App $Exe $null
 $expect = [ordered]@{ 'Main.java' = 'Java'; 'site.css' = 'CSS'; 'prog.c' = 'C'; 'Program.cs' = 'C#'; 'app.cpp' = 'C++'; 'run.cmd' = 'MS-DOS Batch'; 'run.bat' = 'MS-DOS Batch'; 'tool.ps1' = 'PowerShell'; 'app.js' = 'JavaScript' }
 foreach ($k in $expect.Keys) {
     $p = "$W\$k".Replace('\', '\\')
-    $r = J "await openPath('$p'); await new Promise(r=>setTimeout(r,150)); return langInfo(getActive()).label + '|' + layoutMode + '|' + (document.querySelectorAll('#editor-highlight [class^=hljs-]').length > 0) + '|' + statusLang.textContent.trim()"
+    $r = J "await openPath('$p'); await new Promise(r=>setTimeout(r,150)); return langInfo(getActive()).label + '|' + layoutMode + '|' + (edLayer().querySelectorAll('[class^=hljs-]').length > 0) + '|' + statusLang.textContent.trim()"
     $want = $expect[$k]
     T "$k opens as $want, coloured, Edit Only" $r ($r -eq "$want|edit-only|true|$want")
 }

@@ -1,4 +1,4 @@
-param([string]$Exe)
+﻿param([string]$Exe)
 # File recognition (extensions, special names), Settings > File Types (in a throwaway registry key),
 # syntax validation (JSON, JSONC, JSON5, JSON Lines, YAML, TOML, XML), markers, fixes and navigation.
 $sp = . "$PSScriptRoot\testdir.ps1"
@@ -51,7 +51,7 @@ foreach ($k in $names.Keys) {
 T "Special file names, patterns and new extensions ($($names.Count) cases)" ($bad -join '; ') ($bad.Count -eq 0)
 $r = J "return JSON.stringify(['dockerfile','nginx','apache','hcl','dotenv','ignorefile','pem','bash','sql','diff','perl','ruby','makefile'].filter(l => !hljs.getLanguage(l)))"
 T 'Every new grammar is available for colouring' $r ($r -eq '[]')
-$r = J "addDocAndActivate(newUntitledDoc()); setLayoutMode('edit-only'); setDocLanguage('dockerfile'); editor.value = 'FROM alpine:3.20 AS base\nRUN echo hi'; syncFromEditor(); await new Promise(r => setTimeout(r, 300)); return editorHighlight.querySelectorAll('.hljs-keyword').length"
+$r = J "addDocAndActivate(newUntitledDoc()); setLayoutMode('edit-only'); setDocLanguage('dockerfile'); editor.value = 'FROM alpine:3.20 AS base\nRUN echo hi'; syncFromEditor(); await new Promise(r => setTimeout(r, 300)); return edLayer().querySelectorAll('.hljs-keyword').length"
 T 'A Dockerfile is coloured' $r ([int]$r -ge 2)
 $r = J "return JSON.stringify([Object.keys(EXT_LANG).includes('dockerfile'), Object.keys(EXT_LANG).some(e => e.startsWith('.') || /file$/.test(e) && e !== 'dockerfile'), supportedExtensions().includes('env'), supportedExtensions().includes('bashrc')])"
 T 'Registerable list: real extensions only (no Makefile, .bashrc...)' $r ($r -eq '[true,false,true,false]')
@@ -137,11 +137,11 @@ T 'Status bar says No syntax check for unchecked languages' $r ($r -eq '["No syn
 J "if (!lineNumbersVisible) toggleLineNumbers(); return 1" | Out-Null
 $r = Check 'json' "{`n  `"name`": `"x`"`n  `"port`": 80`n}"
 Start-Sleep -Milliseconds 300
-$r = J "renderGutter(); const m = lineNumbersEl.querySelector('.ln-row[data-l=`"1`"] .ln-d'); return JSON.stringify([!!m && m.className, editorHighlight.querySelectorAll('.diag-error').length, document.getElementById('status-diag').textContent])"
-T 'Marker in the gutter, wavy underline, count in the status bar' $r ((L $r '["ln-d error",1,"*1 error"]'))
-$r = J "const d = getActive(); d.bookmarks = {1: 'Red'}; bookmarksChanged(); renderGutter(); const row = lineNumbersEl.querySelector('.ln-row[data-l=`"1`"]'); return JSON.stringify([!!row.querySelector('.ln-d.error'), row.querySelector('.ln-m').className])"
-T 'Error marker and bookmark side by side on one line' $r ($r -eq '[true,"ln-m bm-red"]')
-$r = J "const d = getActive(); editor.focus(); editor.setSelectionRange(0, 0); document.execCommand('insertText', false, '\n'); await new Promise(r => setTimeout(r, 50)); renderGutter(); return JSON.stringify([!!lineNumbersEl.querySelector('.ln-row[data-l=`"2`"] .ln-d'), Object.keys(d.bookmarks)])"
+$r = J "const g = edGutterRow(1); const m = g && g.diag; return JSON.stringify([!!m && (m.classList.contains('error') ? 'error' : m.className), edLayer().querySelectorAll('.diag-error').length, document.getElementById('status-diag').textContent])"
+T 'Marker in the gutter, wavy underline, count in the status bar' $r ((L $r '["error",1,"*1 error"]'))
+$r = J "const d = getActive(); d.bookmarks = {1: 'Red'}; bookmarksChanged(); await new Promise(r => setTimeout(r, 100)); const g = edGutterRow(1); return JSON.stringify([!!g.diag && g.diag.classList.contains('error'), g.margin.classList.contains('bm-red')])"
+T 'Error marker and bookmark side by side on one line' $r ($r -eq '[true,true]')
+$r = J "const d = getActive(); editor.focus(); editor.setSelectionRange(0, 0); editorInsertText('\n'); await new Promise(r => setTimeout(r, 100)); return JSON.stringify([!!(edGutterRow(2) || {}).diag, Object.keys(d.bookmarks)])"
 T 'Marker and bookmark move down when a line is inserted above' $r ($r -eq '[true,["2"]]')
 $r = J "const d = getActive(); for (let i = 0; i < 100 && !(d.diag && d.diag.text === d.content); i++) await new Promise(r => setTimeout(r, 30)); editor.setSelectionRange(0, 0); return 1"
 Key 'F8' 'F8' 119 0
@@ -152,17 +152,17 @@ J "document.querySelector('.diag-pop button[data-act=apply]').click(); return 1"
 Start-Sleep -Milliseconds 300
 $r = J "const d = getActive(); for (let i = 0; i < 100 && !(d.diag && d.diag.text === d.content); i++) await new Promise(r => setTimeout(r, 30)); return JSON.stringify([d.content, d.diag.list.length])"
 T 'Apply fix inserts the comma and the check passes' $r ($r -eq '["\n{\n  \"name\": \"x\",\n  \"port\": 80\n}",0]')
-$r = J "editor.focus(); document.execCommand('undo'); await new Promise(r => setTimeout(r, 50)); return JSON.stringify(getActive().content)"
+$r = J "editor.focus(); runToolbarCommand('undo'); await new Promise(r => setTimeout(r, 50)); return JSON.stringify(getActive().content)"
 T 'Undo takes the fix back in one step' $r ($r -eq '"\n{\n  \"name\": \"x\"\n  \"port\": 80\n}"')
 $r = J "const d = getActive(); const before = d.content; editor.value = '{}'; syncFromEditor(); finishValidation(d, before, 'json', [{s: 0, e: 1, line: 0, col: 0, severity: 'error', title: 'x', message: 'old'}]); return JSON.stringify(d.diag && d.diag.list.some(x => x.message === 'old'))"
 T 'A result for older text is thrown away' $r ($r -eq 'false')
 
 # switching tabs keeps each tab's own problems
-$r = J "const a = getActive(); setDocLanguage('json'); editor.value = '{,}'; syncFromEditor(); runValidation(a); await new Promise(r => setTimeout(r, 300)); const b = newUntitledDoc(); addDocAndActivate(b); setLayoutMode('edit-only'); setDocLanguage('json'); editor.value = '{}'; syncFromEditor(); runValidation(b); await new Promise(r => setTimeout(r, 300)); const nb = b.diag.list.length; setActiveTab(a.id); await new Promise(r => setTimeout(r, 300)); const na = a.diag.list.length; renderGutter(); const marks = lineNumbersEl.querySelectorAll('.ln-d').length; setActiveTab(b.id); b.content = ''; b.savedContent = ''; b.dirty = false; await closeTab(b.id); return JSON.stringify([na > 0, nb, marks > 0])"
+$r = J "const a = getActive(); setDocLanguage('json'); editor.value = '{,}'; syncFromEditor(); runValidation(a); await new Promise(r => setTimeout(r, 300)); const b = newUntitledDoc(); addDocAndActivate(b); setLayoutMode('edit-only'); setDocLanguage('json'); editor.value = '{}'; syncFromEditor(); runValidation(b); await new Promise(r => setTimeout(r, 300)); const nb = b.diag.list.length; setActiveTab(a.id); await new Promise(r => setTimeout(r, 300)); const na = a.diag.list.length; const marks = editor.isCodeMirror ? editor.api.view.dom.querySelectorAll('.np-d').length : (renderGutter(), lineNumbersEl.querySelectorAll('.ln-d').length); setActiveTab(b.id); b.content = ''; b.savedContent = ''; b.dirty = false; await closeTab(b.id); return JSON.stringify([na > 0, nb, marks > 0])"
 T 'Each tab keeps its own problems when switching' $r ($r -eq '[true,0,true]')
 
 # settings
-$r = J "changeSetting('validateEnabled', false); await new Promise(r => setTimeout(r, 200)); const d = getActive(); return JSON.stringify([d.diag, editorHighlight.querySelectorAll('.diag-error').length, document.getElementById('status-diag').classList.contains('hidden')])"
+$r = J "changeSetting('validateEnabled', false); await new Promise(r => setTimeout(r, 200)); const d = getActive(); return JSON.stringify([d.diag, edLayer().querySelectorAll('.diag-error').length, document.getElementById('status-diag').classList.contains('hidden')])"
 T 'Switching validation off removes every marker' $r ($r -eq '[null,0,true]')
 J "changeSetting('validateEnabled', true); return 1" | Out-Null
 $r = J "const d = getActive(); editor.value = '{' + ' '.repeat(6 * 1024 * 1024) + '}'; syncFromEditor(); await new Promise(r => setTimeout(r, 1200)); return JSON.stringify([d.diag, document.getElementById('status-diag').textContent])"

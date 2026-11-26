@@ -29,14 +29,16 @@ StubClipboard
 
 # ---------- word wrap ----------
 J "await openPath('$(P 'app.log')'); setLayoutMode('edit-only'); editor.value = 'x'.repeat(400) + '\n' + editor.value; syncFromEditor(); return 1" | Out-Null
-$r = J "return settings.wordWrap + '|' + getComputedStyle(editor).whiteSpace + '|' + (editor.scrollWidth > editor.clientWidth)"
-T 'Word wrap on by default' $r ($r -eq 'true|pre-wrap|false')
+$r = J "return settings.wordWrap + '|' + getComputedStyle(edTextEl()).whiteSpace + '|' + (editor.scrollWidth > editor.clientWidth)"
+T 'Word wrap on by default' $r ($r -eq 'true|pre-wrap|false' -or $r -eq 'true|break-spaces|false')
 Send-Key @('ALT') 'z' 'KeyZ' 0x5A
-$r = J "await new Promise(r=>requestAnimationFrame(()=>r())); return settings.wordWrap + '|' + getComputedStyle(editor).whiteSpace + '|' + getComputedStyle(editorHighlight).whiteSpace + '|' + (editor.scrollWidth > editor.clientWidth) + '|' + editor.getAttribute('wrap')"
+$r = J "await new Promise(r=>requestAnimationFrame(()=>r())); return settings.wordWrap + '|' + getComputedStyle(edTextEl()).whiteSpace + '|' + getComputedStyle(editorHighlight).whiteSpace + '|' + (editor.scrollWidth > editor.clientWidth) + '|' + editor.getAttribute('wrap')"
 T 'Alt+Z turns word wrap off (editor + colour layer)' $r ($r -eq 'false|pre|pre|true|off')
+if (IsCM) { 'SKIPPED in CodeMirror: no separate coloured layer to keep in step' } else {
 $r = J "editor.scrollLeft = 300; editor.dispatchEvent(new Event('scroll')); return editor.scrollLeft + '/' + editorHighlight.scrollLeft + ' h=' + editor.clientHeight + '/' + editorHighlight.clientHeight"
 $m = [regex]::Match($r, '(\d+)/(\d+) h=(\d+)/(\d+)')
 T 'No-wrap: layers scroll sideways together, same height' $r ($m.Success -and $m.Groups[1].Value -eq $m.Groups[2].Value -and $m.Groups[3].Value -eq $m.Groups[4].Value -and [int]$m.Groups[1].Value -gt 0)
+}
 Shot 'nowrap'
 J "editor.scrollLeft=0; editor.dispatchEvent(new Event('scroll')); return 1" | Out-Null
 
@@ -73,7 +75,7 @@ set('editFont', 'Courier New'); set('editStyle', 'bold-italic'); set('editColor'
 set('previewFont', 'Georgia'); set('previewStyle', 'italic'); set('previewColor', '#334455'); set('previewBg', '#eef7ff');
 set('tabSize', '8'); set('lineNumbers', true); set('newTabView', 'split-ep'); set('editFontSize', '18'); set('previewFontSize', '18');
 await new Promise(r=>requestAnimationFrame(()=>r()));
-const e = getComputedStyle(editor), h = getComputedStyle(editorHighlight), p = getComputedStyle(preview), w = getComputedStyle(editorHighlight.parentElement);
+const e = getComputedStyle(edTextEl()), h = getComputedStyle(editorHighlight), p = getComputedStyle(preview), w = getComputedStyle(editorHighlight.parentElement);
 return [e.fontFamily.split(',')[0], e.fontWeight, e.fontStyle, h.fontFamily.split(',')[0], h.fontWeight, h.color, w.backgroundColor, e.tabSize, p.fontFamily.split(',')[0], p.fontStyle, p.color, p.backgroundColor, lineNumbersVisible].join('|');
 "@
 T 'Editor + preview font, style, colours, tab width apply live' $r ($r -eq '"Courier New"|700|italic|"Courier New"|700|rgb(17, 34, 51)|rgb(255, 248, 224)|8|Georgia|italic|rgb(51, 68, 85)|rgb(238, 247, 255)|true')
@@ -82,9 +84,9 @@ $r = J "settingsEl.querySelector('[data-clear=previewBg]').click(); await new Pr
 T '"Use theme" clears a custom colour' $r ($r -like '|theme|rgb(*' -and $r -notlike '*238, 247, 255*')
 Send-Key @() 'Escape' 'Escape' 0x1B
 T 'Esc closes Settings' (J "return settingsEl.classList.contains('hidden')") ((J "return settingsEl.classList.contains('hidden')") -eq $true)
-$r = J "addDocAndActivate(newUntitledDoc()); return getActive().layoutMode + '|' + getComputedStyle(editor).fontSize + '|' + getComputedStyle(preview).fontSize + '|' + statusZoom.textContent"
+$r = J "addDocAndActivate(newUntitledDoc()); return getActive().layoutMode + '|' + getComputedStyle(edTextEl()).fontSize + '|' + getComputedStyle(preview).fontSize + '|' + statusZoom.textContent"
 T 'New tab uses default view + editor/preview font sizes from Settings' $r ($r -eq 'split-ep|18px|18px|100%')
-$r = J "await openPath('$(P 'notes.md')'); const a=getActive().layoutMode; await openPath('$(P 'data.json')'); return a + '|' + getActive().layoutMode + '|' + getComputedStyle(editor).fontSize"
+$r = J "await openPath('$(P 'notes.md')'); const a=getActive().layoutMode; await openPath('$(P 'data.json')'); return a + '|' + getActive().layoutMode + '|' + getComputedStyle(edTextEl()).fontSize"
 T 'Opened Markdown follows default view; code stays Edit Only' $r ($r -eq 'split-ep|edit-only|18px')
 
 # ---------- table editing ----------

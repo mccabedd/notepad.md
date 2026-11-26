@@ -60,7 +60,7 @@ J "togglePin(docs[0].id); return 1" | Out-Null
 # ---------- spelling right-click ----------
 J "setLayoutMode('edit-only'); editor.focus(); editor.value='This is a mispeled word'; editor.dispatchEvent(new Event('input')); return 1" | Out-Null
 Start-Sleep -Milliseconds 1500
-$p = Pt "editorHighlight.querySelector('.spell-err').getClientRects()[0]"
+$p = Pt "edLayer().querySelector('.spell-err').getClientRects()[0]"
 Click $p.x $p.y 'right'; Start-Sleep -Milliseconds 1200
 $r = J "return [...ctxMenu.querySelectorAll('.ctx-label')].map(e=>e.textContent).join('|')"
 T 'Misspelt word right-click shows suggestions' $r ($r -like 'misspelled*Add "mispeled" to dictionary|Ignore')
@@ -73,7 +73,7 @@ Shot 'spell'
 # ---------- Tab key in the editor ----------
 J "editor.focus(); editor.value='abc'; editor.setSelectionRange(3,3); editor.dispatchEvent(new Event('input')); return 1" | Out-Null
 Send-Key @() 'Tab' 'Tab' 9
-$r = J "return JSON.stringify(editor.value) + '|' + (document.activeElement === editor)"
+$r = J "return JSON.stringify(editor.value) + '|' + (editorHasFocus())"
 T 'Tab inserts a tab and keeps focus in the editor' $r ($r -eq '"abc\t"|true')
 J "editor.value='one\ntwo\nthree'; editor.dispatchEvent(new Event('input')); editor.setSelectionRange(0, 7); return 1" | Out-Null
 Send-Key @() 'Tab' 'Tab' 9
@@ -89,17 +89,17 @@ T 'Ctrl+Z undoes the outdent' $r ($r -eq '"\tone\n\ttwo\nthree"')
 # ---------- indent guides ----------
 J "editor.value='root\n\tlevel1\n\t\tlevel2\n        eight spaces'; editor.dispatchEvent(new Event('input')); return 1" | Out-Null
 Start-Sleep -Milliseconds 200
-$r = J "return editorHighlight.querySelectorAll('.ig').length + '|' + editorHighlight.textContent.length + '|' + editor.value.length"
+$r = J "return edLayer().querySelectorAll('.ig').length + '|' + editorHighlight.textContent.length + '|' + editor.value.length"
 T 'Indent guides drawn (1+2+2), text unchanged' $r ($r -eq '5|42|42')
 Shot 'guides'
 
 # ---------- links in the editor ----------
 J "editor.value='See https://example.com/a?x=1&y=2. and (https://en.wikipedia.org/wiki/Foo_(bar))'; editor.dispatchEvent(new Event('input')); return 1" | Out-Null
 Start-Sleep -Milliseconds 200
-$r = J "return [...editorHighlight.querySelectorAll('.ov-url')].map(s=>s.textContent).join('') + '|' + urlRanges(editor.value).length"
+$r = J "return [...edLayer().querySelectorAll('.ov-url')].map(s=>s.textContent).join('') + '|' + urlRanges(editor.value).length"
 T 'Links are underlined in the editor' $r ($r -eq 'https://example.com/a?x=1&y=2https://en.wikipedia.org/wiki/Foo_(bar)|2')
 J "window.__opened=null; openUrl=(u)=>{window.__opened=u}; return 1" | Out-Null
-$p = Pt "editorHighlight.querySelector('.ov-url').getClientRects()[0]"
+$p = Pt "edLayer().querySelector('.ov-url').getClientRects()[0]"
 Click ($p.x + 30) $p.y 'left' 0
 $r = J "return String(window.__opened)"
 T 'Plain click on a link only places the caret' $r ($r -eq 'null')

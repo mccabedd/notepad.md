@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
   previewColor: '',
   previewBg: '',
   showHidden: false, // View > Show Hidden Characters (spaces, tabs, line endings, invisible characters)
+  spellLogs: false, // spell-check log files too (Settings > Spelling); off: logs are mostly program output
   bookmarkColour: 'Green', // colour a click in the bookmark margin (and Ctrl+F2) gives a line
   settingsTab: 'general', // the Settings page shown last
   validateEnabled: true, // syntax checks for JSON, YAML, TOML, XML...
@@ -144,6 +145,7 @@ function applySettings() {
 
   document.body.classList.toggle('nowrap', !settings.wordWrap);
   editor.setAttribute('wrap', settings.wordWrap ? 'soft' : 'off');
+  if (editor.isCodeMirror && editor.api) editor.api.setTabSize();
   sidebarEl.classList.toggle('hidden', !settings.sidebar);
   statusbarEl.classList.toggle('hidden', !settings.statusBar);
   if (typeof applyOutlineVisibility === 'function') applyOutlineVisibility();
@@ -236,6 +238,13 @@ const LIVE_SETTINGS = {
     },
   },
   spellLang: { get: () => spell.lang, set: (v) => setSpellLang(v) },
+  spellLogs: {
+    get: () => !!settings.spellLogs,
+    set: (v) => {
+      settings.spellLogs = !!v;
+      refreshSpellEverywhere(); // marks appear / go at once
+    },
+  },
 };
 
 function readSetting(key) {

@@ -149,7 +149,7 @@ T 'Ctrl+G opens Go to Line' $r ($r.StartsWith('[true,"goto-input","Line number (
 J "document.getElementById('goto-input').value=''; return 1" | Out-Null
 TypeText '150'
 K '' 'Enter' 'Enter' 0x0D
-$r = J "const c=lineIndex(getActive()); return JSON.stringify([document.getElementById('goto').classList.contains('hidden'), lineOf(c, editor.selectionStart)+1, document.activeElement===editor, editor.value.slice(editor.selectionStart, editor.selectionStart+33)])"
+$r = J "const c=lineIndex(getActive()); return JSON.stringify([document.getElementById('goto').classList.contains('hidden'), lineOf(c, editor.selectionStart)+1, editorHasFocus(), editor.value.slice(editor.selectionStart, editor.selectionStart+33)])"
 T 'Typing 150 + Enter puts the caret on line 150' $r ($r -eq '[true,150,true,"2024-10-14 10:00:00 INFO line 150"]')
 K 'CTRL' 'g' 'KeyG' 0x47
 K '' 'Escape' 'Escape' 0x1B
@@ -226,7 +226,7 @@ $sb = New-Object Text.StringBuilder
 for ($i = 0; $i -lt 260000; $i++) { [void]$sb.Append($line).Append("`n") }
 Write-NoBom $big $sb.ToString()
 $mb = [math]::Round((Get-Item $big).Length / 1MB, 1)
-$r = J "const t=performance.now(); await openPath('$w\\big.log'); const ms=Math.round(performance.now()-t); const d=getActive(); return JSON.stringify([d.layoutMode, editor.classList.contains('hl-active'), ms])"
+$r = J "const t=performance.now(); await openPath('$w\\big.log'); const ms=Math.round(performance.now()-t); const d=getActive(); return JSON.stringify([d.layoutMode, editor.isCodeMirror ? !!edLayer().querySelector('[class^=hljs-]') : editor.classList.contains('hl-active'), ms])"
 $o = $r | ConvertFrom-Json
 T "A $mb MB log opens (Edit Only, no colouring)" $r ($o[0] -eq 'edit-only' -and $o[1] -eq $false -and $o[2] -lt 15000)
 # Most of a key's time in a file this big is the browser's own text box, which varies a lot between
@@ -254,7 +254,7 @@ $r = J "for (let i=0;i<40;i++) { editor.value += '\n\nfiller paragraph ' + i; } 
 J "editor.value = editor.value + '\n\n## Part C\n\nend'; editor.dispatchEvent(new Event('input')); await new Promise(r=>setTimeout(r,400)); return 1" | Out-Null
 $r = J "const items=[...document.querySelectorAll('.outline-item')]; const last=items[items.length-1]; last.click(); await new Promise(r=>setTimeout(r,200)); const h=[...preview.querySelectorAll('h2')].pop(); const off=Math.round(h.getBoundingClientRect().top - preview.getBoundingClientRect().top); await new Promise(r=>setTimeout(r,700)); return JSON.stringify([last.textContent, off >= 0 && off < preview.clientHeight - 20 && preview.scrollTop > 0, last.classList.contains('active')])"
 T 'Outline updates as you type, and clicking a heading scrolls to it' $r ($r -eq '["Part C",true,true]')
-$r = J "setLayoutMode('edit-only'); document.querySelectorAll('.outline-item')[1].click(); await new Promise(r=>setTimeout(r,100)); const c=lineIndex(getActive()); return JSON.stringify([lineOf(c, editor.selectionStart)+1, document.activeElement===editor])"
+$r = J "setLayoutMode('edit-only'); document.querySelectorAll('.outline-item')[1].click(); await new Promise(r=>setTimeout(r,100)); const c=lineIndex(getActive()); return JSON.stringify([lineOf(c, editor.selectionStart)+1, editorHasFocus()])"
 T 'In the editor, clicking a heading puts the caret on its line' $r ($r -eq '[5,true]')
 $r = J "return JSON.stringify(currentMenuChecks().outline)"
 T 'View > Outline shows a tick' $r ($r -eq 'true')

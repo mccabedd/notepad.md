@@ -9,7 +9,8 @@ const toolbarEl = document.getElementById('toolbar');
 const workspace = document.getElementById('workspace');
 const editorPane = document.getElementById('editor-pane');
 const lineNumbersEl = document.getElementById('line-numbers');
-const editor = document.getElementById('editor');
+// The text editor: CodeMirror behind a textarea-like stand-in, or the textarea itself (editor-facade.js).
+const editor = window.npEditor;
 const editorHighlight = document.getElementById('editor-highlight');
 const resizer = document.getElementById('resizer');
 const previewPane = document.getElementById('preview-pane');
@@ -198,6 +199,12 @@ function langInfo(doc) {
 
 function isProse(doc) {
   return !!langInfo(doc).prose;
+}
+
+/** Whether the editor spell-checks this tab: prose, and log files when Settings > Spelling >
+ *  Spell-check log files is on (off by default: logs are mostly program output). */
+function editorSpellChecks(doc) {
+  return !!doc && (isProse(doc) || (doc.lang === 'log' && !!settings.spellLogs));
 }
 
 /** Only Markdown-rendered documents have an editable preview that writes back to the source. */
@@ -399,7 +406,7 @@ function focusForTyping() {
         }
         if (doc.content) preview.scrollTop = keepTop; // placing the caret must not move the view
       }
-    } else if (layoutMode !== 'preview-only' && document.activeElement !== editor) {
+    } else if (layoutMode !== 'preview-only' && !editorHasFocus()) {
       editor.focus();
     }
   };
@@ -452,6 +459,7 @@ function applyFontSize() {
   const prev = px(settings.previewFontSize);
   document.documentElement.style.setProperty('--content-font-size', edit + 'px');
   document.documentElement.style.setProperty('--preview-font-size', prev + 'px');
+  if (editor.isCodeMirror && editor.api) editor.api.view.requestMeasure(); // line heights changed
   statusZoom.textContent = Math.round(zoom * 100) + '%';
   statusZoom.title = 'Editor ' + edit + 'px, preview ' + prev + 'px · Ctrl+wheel or Ctrl++ / Ctrl+- to zoom this tab, Ctrl+0 (or click) to reset';
 }
@@ -566,8 +574,12 @@ function toggleToolbar() {
 function setLineNumbersVisible(visible) {
   syncMenuChecks();
   lineNumbersVisible = visible;
-  lineNumbersEl.classList.toggle('hidden', !visible);
   lineNumbersPreviewEl.classList.add('hidden'); // line numbers belong to the editor only, not the preview
+  if (editor.isCodeMirror) {
+    editor.api.setLineNumbers(visible); // CodeMirror's own gutter
+    return;
+  }
+  lineNumbersEl.classList.toggle('hidden', !visible);
   updateLineNumbers();
   scheduleOverlay(); // with word wrap, the gutter follows the coloured layer's line blocks
 }
@@ -593,7 +605,7 @@ function overlayNeedsLines() {
 
 /** After the text changed: recount the lines and redraw the rows in view. */
 function updateLineNumbers() {
-  if (!lineNumbersVisible) return;
+  if (!lineNumbersVisible || editor.isCodeMirror) return;
   wrapTextVersion++;
   let count = 1;
   const v = editor.value;
@@ -610,7 +622,7 @@ function updateLineNumbers() {
 
 let gutterFrame = 0;
 function scheduleGutter() {
-  if (!lineNumbersVisible || gutterFrame) return;
+  if (!lineNumbersVisible || gutterFrame || editor.isCodeMirror) return;
   gutterFrame = requestAnimationFrame(() => {
     gutterFrame = 0;
     renderGutter();
@@ -768,7 +780,7 @@ function wrapLayout() {
 }
 
 function renderGutter() {
-  if (!lineNumbersVisible) return;
+  if (!lineNumbersVisible || editor.isCodeMirror) return;
   const doc = getActive();
   const bms = (doc && doc.bookmarks) || {};
   // Syntax problems get a marker left of the number (room kept for checked languages, so nothing shifts).
@@ -806,6 +818,116 @@ function gutterLineAt(e) {
 // The last plain click in the bookmark margin (a Shift+click then applies the same to a range).
 let gutterAnchor = null;
 
+/** A click in the bookmark margin beside `line` (0-based). Shift+click: every line from the last
+ *  click to this one gets what that click did (bookmarked in its colour, or bookmark removed). */
+function bookmarkMarginClick(doc, line, shift) {
+  if (shift && gutterAnchor && gutterAnchor.docId === doc.id) {
+    const lo = Math.min(gutterAnchor.line, line);
+    const hi = Math.max(gutterAnchor.line, line);
+    const lines = [];
+    for (let l = lo; l <= hi; l++) lines.push(l);
+    setBookmarks(doc, lines, gutterAnchor.colour);
+    flashFindStatus((gutterAnchor.colour ? 'Bookmarked' : 'Removed bookmarks from') + ' lines ' + (lo + 1) + '–' + (hi + 1) + '.');
+    return;
+  }
+  const colour = bookmarkOf(doc, line) ? null : settings.bookmarkColour;
+  setBookmarks(doc, [line], colour);
+  gutterAnchor = { docId: doc.id, line, colour };
+}
+
+/* The elements that show the editor's text, colours and line numbers, in either editor (the
+   textarea + coloured layer + gutter, or CodeMirror). Used by checks and the tests. */
+function edTextEl() {
+  return editor.isCodeMirror ? editor.api.view.contentDOM : editor;
+}
+function edLayer() {
+  return editor.isCodeMirror ? editor.api.view.contentDOM : editorHighlight;
+}
+function edGutterEl() {
+  return editor.isCodeMirror ? editor.api.view.dom.querySelector('.cm-gutters') : lineNumbersEl;
+}
+/** The gutter elements of `line` (0-based) in view: { number, margin, diag } (or null). */
+function edGutterRow(line) {
+  if (!editor.isCodeMirror) {
+    renderGutter();
+    const row = lineNumbersEl.querySelector('.ln-row[data-l="' + line + '"]');
+    return row && { number: row.querySelector('.ln-n'), margin: row.querySelector('.ln-m'), diag: row.querySelector('.ln-d') };
+  }
+  const v = editor.api.view;
+  if (line >= v.state.doc.lines) return null;
+  const top = v.documentTop + v.lineBlockAt(v.state.doc.line(line + 1).from).top;
+  const pick = (gutter) =>
+    [...v.dom.querySelectorAll(gutter + ' .cm-gutterElement')].find((el) => el.offsetHeight > 0 && Math.abs(el.getBoundingClientRect().top - top) < 2) || null;
+  const number = pick('.cm-lineNumbers');
+  if (!number) return null;
+  const margin = pick('.cm-np-bookmarks');
+  const diag = pick('.cm-np-diag');
+  return { number, margin: margin && (margin.querySelector('.cm-np-bm') || margin), diag: diag && diag.querySelector('.np-d') };
+}
+/** Screen point at the middle of a line's number ('number') or bookmark margin ('margin'). */
+function edGutterPoint(line, part) {
+  const r = edGutterRow(line);
+  const el = r && (part === 'margin' ? r.margin : r.number);
+  if (!el) return null;
+  const b = el.getBoundingClientRect();
+  return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + Math.min(b.height, 20) / 2) };
+}
+
+/* What the CodeMirror editor asks the app for (editor-codemirror.js). */
+
+/** The marks to draw (find hits, bookmarked lines, Go to Line, problems), or null while the
+ *  app's copy of the text is behind the editor's (they are moved with the edit until then). */
+function npAppDecorations() {
+  const d = getActive();
+  if (!d || editor.value !== d.content) return null;
+  return editorDecorations(d);
+}
+/** Which per-line marks to draw: links, indent guides, hidden characters, spelling. */
+function npTextMarks() {
+  const d = getActive();
+  if (!d) return null;
+  const info = langInfo(d);
+  return {
+    links: true,
+    indent: true,
+    hidden: settings.showHidden ? { eol: d.eol, bom: /bom|utf16/.test(d.encoding || '') } : null,
+    // Only the lines in view are checked, so any size can be (the old editor stopped at 150 KB).
+    spell: !!(spell.enabled && editorSpellChecks(d)),
+  };
+}
+/** Map(line -> 'error' | 'warning' | 'info') for the problem margin, or null when it has no column. */
+function npDiagLines() {
+  const d = getActive();
+  return d && gutterHasDiagColumn(d) ? diagnosticLines(d) : null;
+}
+/** [[line (0-based), colour], ...] of the active tab's bookmarks. */
+function npBookmarkLines() {
+  const d = getActive();
+  return d && d.bookmarks ? Object.entries(d.bookmarks).map(([l, c]) => [Number(l), c]) : [];
+}
+function npGutterBookmarkClick(line, shift) {
+  const d = getActive();
+  if (d) bookmarkMarginClick(d, line, shift);
+}
+function npGutterNumberClick(line) {
+  const d = getActive();
+  if (d) lineNumberClick(d, line);
+}
+function npGutterMenu(line, x, y) {
+  const d = getActive();
+  if (d) showBookmarkMarginMenu(x, y, d, line);
+}
+
+/** A click on a line number: selects the whole line. */
+function lineNumberClick(doc, line) {
+  const c = lineIndex(doc);
+  if (line >= c.starts.length) return;
+  const end = line + 1 < c.starts.length ? c.starts[line + 1] : doc.content.length;
+  editor.focus();
+  editor.setSelectionRange(c.starts[line], end);
+  updateStatusBar();
+}
+
 function wireGutter() {
   lineNumbersEl.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
@@ -813,30 +935,8 @@ function wireGutter() {
     const line = gutterLineAt(e);
     const doc = getActive();
     if (line === null || !doc) return;
-    if (e.target.closest('.ln-m') || e.clientX >= lineNumbersEl.getBoundingClientRect().right - 20) {
-      // Shift+click: every line from the last click to this one gets what that click did
-      // (bookmarked in its colour, or bookmark removed).
-      if (e.shiftKey && gutterAnchor && gutterAnchor.docId === doc.id) {
-        const lo = Math.min(gutterAnchor.line, line);
-        const hi = Math.max(gutterAnchor.line, line);
-        const lines = [];
-        for (let l = lo; l <= hi; l++) lines.push(l);
-        setBookmarks(doc, lines, gutterAnchor.colour);
-        flashFindStatus((gutterAnchor.colour ? 'Bookmarked' : 'Removed bookmarks from') + ' lines ' + (lo + 1) + '–' + (hi + 1) + '.');
-        return;
-      }
-      const colour = bookmarkOf(doc, line) ? null : settings.bookmarkColour;
-      setBookmarks(doc, [line], colour);
-      gutterAnchor = { docId: doc.id, line, colour };
-      return;
-    }
-    // On the number: select the whole line.
-    const c = lineIndex(doc);
-    if (line >= c.starts.length) return;
-    const end = line + 1 < c.starts.length ? c.starts[line + 1] : doc.content.length;
-    editor.focus();
-    editor.setSelectionRange(c.starts[line], end);
-    updateStatusBar();
+    if (e.target.closest('.ln-m') || e.clientX >= lineNumbersEl.getBoundingClientRect().right - 20) bookmarkMarginClick(doc, line, e.shiftKey);
+    else lineNumberClick(doc, line);
   });
   lineNumbersEl.addEventListener('contextmenu', (e) => {
     e.preventDefault();
@@ -848,7 +948,7 @@ function wireGutter() {
   lineNumbersEl.addEventListener('wheel', (e) => {
     editor.scrollTop += e.deltaY;
   }, { passive: true });
-  if (window.ResizeObserver) new ResizeObserver(() => scheduleGutter()).observe(editor);
+  if (window.ResizeObserver) new ResizeObserver(() => scheduleGutter()).observe(editor.host || editor);
 }
 
 /* ---------- syntax highlighting ---------- */
@@ -886,6 +986,17 @@ function renderEditorOverlay() {
     cancelAnimationFrame(overlayFrame);
     overlayFrame = 0;
   }
+  // CodeMirror draws its own text: colours and marks are its decorations (editor-codemirror.js).
+  if (editor.isCodeMirror) {
+    const d = getActive();
+    if (editor.api && d) {
+      // The problem margin keeps its room for checked languages, so nothing shifts while typing.
+      editor.host.classList.toggle('np-diagcol', gutterHasDiagColumn(d));
+      editor.api.setLanguage(langInfo(d).hljs || null);
+      editor.api.refreshMarks();
+    }
+    return;
+  }
   const doc = getActive();
   const text = editor.value;
   if (text.length > HIGHLIGHT_MAX_CHARS) {
@@ -897,7 +1008,7 @@ function renderEditorOverlay() {
   lazyShown = null;
   clearTimeout(lazyTimer);
   const info = langInfo(doc);
-  const wantSpell = spell.enabled && info.prose && text.length <= SPELL_MAX_CHARS;
+  const wantSpell = spell.enabled && editorSpellChecks(doc) && text.length <= SPELL_MAX_CHARS;
   const decos = doc && text === doc.content ? editorDecorations(doc) : [];
   const hasIndent = /(^|\n)[ \t]/.test(text);
   const hasUrl = URL_RE_TEST.test(text);
@@ -1059,6 +1170,7 @@ function setOverlayLineEnd(el, want) {
 
 /** Absolute text offset of a spelling span in the coloured layer (its data-o is relative to its line). */
 function overlayOffsetOf(span) {
+  if (editor.isCodeMirror) return editor.api.posAtDOM(span); // CodeMirror knows where its text is
   const line = span.closest('.ovl');
   const doc = getActive();
   if (!line || !doc) return Number(span.dataset.o);
@@ -1723,8 +1835,8 @@ function pointInRects(x, y, rects) {
 function replaceEditorRange(start, end, text) {
   editor.focus();
   editor.setSelectionRange(start, end);
-  // execCommand keeps the replacement on the textarea's undo stack.
-  if (!document.execCommand('insertText', false, text)) {
+  // Typed in (execCommand / a CodeMirror input): stays on the undo stack.
+  if (!editorInsertText(text)) {
     editor.value = editor.value.slice(0, start) + text + editor.value.slice(end);
     syncFromEditor();
   }
@@ -1896,9 +2008,54 @@ function renderPreview(doc) {
     if (typeof refreshPreviewFindHighlights === 'function') refreshPreviewFindHighlights(false);
     return;
   }
+  // A very big document: the preview shows its first part only (read-only, so editing the preview
+  // can never write a shortened text back), with a note saying so. The editor has the whole file.
+  const src = previewSource(doc);
+  delete preview.dataset.cut;
+  if (src.cut) {
+    preview.dataset.cut = '1';
+    preview.setAttribute('contenteditable', 'false');
+    const note = () => {
+      const n = document.createElement('div');
+      n.className = 'preview-cut-note';
+      n.textContent =
+        'The preview shows the first ' + fmtMB(src.text.length) + ' of this ' + fmtMB(doc.content.length) + ' file, read-only. The editor has the whole file: edit it there.';
+      preview.prepend(n);
+    };
+    if (mode === 'markdown' || mode === 'bbcode') {
+      let html;
+      try {
+        html = mode === 'markdown' ? marked_.parse(src.text) : renderBBCode(src.text);
+      } catch (e) {
+        html = '';
+      }
+      setSanitizedHtml(preview, html, false);
+      markVisitedLinks();
+    } else if (mode === 'plain') {
+      preview.textContent = src.text;
+    } else {
+      preview.innerHTML = '<pre><code class="hljs">' + highlightCode(src.text, langInfo(doc).hljs) + '</code></pre>';
+    }
+    note();
+    return;
+  }
   if (mode === 'markdown') {
     preview.setAttribute('contenteditable', 'true');
-    setSanitizedHtml(preview, marked_.parse(doc.content), true);
+    let html;
+    try {
+      html = marked_.parse(doc.content);
+    } catch (e) {
+      // The Markdown converter gave up on this text: say so instead of leaving the old preview.
+      preview.setAttribute('contenteditable', 'false');
+      preview.dataset.cut = '1';
+      preview.replaceChildren();
+      const n = document.createElement('div');
+      n.className = 'preview-cut-note';
+      n.textContent = 'This text could not be shown as Markdown (' + String((e && e.message) || e).split('\n')[0] + '). The editor has the whole file.';
+      preview.appendChild(n);
+      return;
+    }
+    setSanitizedHtml(preview, html, true);
     markBareLinks();
     markVisitedLinks();
     fixPreviewImages(doc);
@@ -1921,6 +2078,20 @@ function renderPreview(doc) {
   }
   schedulePreviewSpell(0);
   if (typeof refreshPreviewFindHighlights === 'function') refreshPreviewFindHighlights(false);
+}
+
+/* The preview of a very big document shows its first PREVIEW_MAX_CHARS (cut at a line end):
+ * rendering 25 MB of text as Markdown takes the converter half a minute and can crash it, and the
+ * window is frozen meanwhile. Up to 4 MB it takes about a second at most. */
+const PREVIEW_MAX_CHARS = 4 * 1024 * 1024;
+function previewSource(doc) {
+  const t = doc.content;
+  if (t.length <= PREVIEW_MAX_CHARS) return { text: t, cut: false };
+  const end = t.lastIndexOf('\n', PREVIEW_MAX_CHARS);
+  return { text: t.slice(0, end > 0 ? end : PREVIEW_MAX_CHARS), cut: true };
+}
+function fmtMB(chars) {
+  return (chars / 1048576).toFixed(1) + ' MB';
 }
 
 let largePreviewTimer = 0;
@@ -2020,6 +2191,8 @@ function plainPreviewText() {
 function syncFromPreview() {
   const doc = getActive();
   if (!doc || !isEditablePreview(doc)) return;
+  // A preview showing only part of the document never writes back (it would cut the document short).
+  if (preview.dataset.cut) return;
   const render = langInfo(doc).render;
   let text;
   try {
@@ -2044,7 +2217,11 @@ function syncFromPreview() {
 function loadActiveDocIntoPanes() {
   const doc = getActive();
   if (!doc) return;
-  editor.value = doc.content;
+  if (editor.isCodeMirror) {
+    if (editor.api) editor.api.setLanguage(langInfo(doc).hljs || null, true); // before loading: coloured once
+    editor.loadText(doc.content); // its own document and undo history
+  }
+  else editor.value = doc.content;
   editor.placeholder = isProse(doc) ? 'Start typing...' : 'Start typing ' + langInfo(doc).label + '...';
   applyFontSize();
   applyLayout(doc.layoutMode);
@@ -3036,7 +3213,15 @@ async function openPath(path, { quiet = false } = {}) {
   const doc = makeDoc(data.path, text, { encoding: data.encoding, eol, layoutMode: large ? 'edit-only' : undefined });
   setDiskStat(doc, data);
   addRecent(data.path);
-  if (large) setTimeout(() => flashFindStatus('Large file (' + (data.size / 1048576).toFixed(1) + ' MB): opened in Edit Only, without spell checking. Colours appear when you pause typing.'), 50);
+  if (large)
+    setTimeout(
+      () =>
+        flashFindStatus(
+          'Large file (' + (data.size / 1048576).toFixed(1) + ' MB): opened in Edit Only' +
+            (editor.isCodeMirror ? '. Its preview shows the first 4 MB.' : ', without spell checking. Colours appear when you pause typing.')
+        ),
+      50
+    );
   const active = getActive();
   const idx = active ? docs.indexOf(active) : -1;
   if (active && !active.path && !active.dirty && active.content === '' && !active.pinned) {
@@ -3364,11 +3549,15 @@ function runToolbarCommand(cmd) {
     }
   }
   switch (cmd) {
+    // execCommand undoes in whatever has the focus; CodeMirror keeps its own history, so it gets
+    // the command unless the preview is the one with the focus.
     case 'undo':
-      document.execCommand('undo');
+      if (editor.isCodeMirror && !preview.contains(document.activeElement)) editor.undo();
+      else document.execCommand('undo');
       break;
     case 'redo':
-      document.execCommand('redo');
+      if (editor.isCodeMirror && !preview.contains(document.activeElement)) editor.redo();
+      else document.execCommand('redo');
       break;
     case 'toggle-line-numbers':
       toggleLineNumbers();
@@ -3464,14 +3653,20 @@ function wireDomEvents() {
     }
   });
   editor.addEventListener('contextmenu', (e) => {
-    if (!editor.classList.contains('hl-active')) return;
     // On a link, WebView2's own menu opens with the link items added at the top (linkmenu.rs).
-    const span = [...editorHighlight.querySelectorAll('.spell-err')].find((s) =>
-      pointInRects(e.clientX, e.clientY, s.getClientRects())
-    );
+    let span;
+    let start;
+    if (editor.isCodeMirror) {
+      // CodeMirror draws the text itself: the click lands on the spelling mark.
+      span = e.target.closest && e.target.closest('.spell-err');
+      if (span) start = editor.api.posAtDOM(span);
+    } else {
+      if (!editor.classList.contains('hl-active')) return;
+      span = [...editorHighlight.querySelectorAll('.spell-err')].find((s) => pointInRects(e.clientX, e.clientY, s.getClientRects()));
+      if (span) start = overlayOffsetOf(span);
+    }
     if (!span) return;
     e.preventDefault();
-    const start = overlayOffsetOf(span);
     const word = span.dataset.w;
     showSpellMenu(e.clientX, e.clientY, word, (s) => replaceEditorRange(start, start + word.length, s));
   });
@@ -3500,6 +3695,7 @@ function wireDomEvents() {
   });
   // Links in the editor: underlined, Ctrl+click opens them (a plain click places the caret).
   const overUrl = (e) => {
+    if (editor.isCodeMirror) return !!(e.target.closest && e.target.closest('.ov-url'));
     if (!editor.classList.contains('hl-active')) return false;
     return [...editorHighlight.querySelectorAll('.ov-url')].some((s) => pointInRects(e.clientX, e.clientY, s.getClientRects()));
   };
@@ -3511,6 +3707,10 @@ function wireDomEvents() {
     invoke('cmd_set_hover_link', { url }).catch(() => {});
   };
   const linkAt = (e) => {
+    if (editor.isCodeMirror) {
+      const el = e.target.closest && e.target.closest('.ov-url');
+      return (el && el.dataset.url) || null;
+    }
     if (!editor.classList.contains('hl-active')) return null;
     const s = [...editorHighlight.querySelectorAll('.ov-url')].find((x) => pointInRects(e.clientX, e.clientY, x.getClientRects()));
     return (s && s.dataset.url) || null;
@@ -3807,7 +4007,7 @@ function wireDomEvents() {
       printActive();
     } else if ((e.code === 'KeyB' || e.code === 'KeyI') && !e.shiftKey) {
       // Bold / italic. In the editable preview the browser's own Ctrl+B / Ctrl+I already does it.
-      if (e.target === editor) {
+      if (e.target === editor || (editor.isCodeMirror && editor.contains(e.target))) {
         e.preventDefault();
         toggleInlineFormat(e.code === 'KeyB' ? 'bold' : 'italic');
       } else if (e.target !== preview && !preview.contains(e.target)) e.preventDefault();
@@ -4008,6 +4208,7 @@ async function init() {
   registerLogLanguage();
   registerConfigLanguages();
   const session = await loadSessionFile();
+  await window.npEditorReady; // CodeMirror (a module) is in place before anything is wired to it
   applyUi(session && session.ui);
   wireDomEvents();
   wireMenuListeners();
@@ -4050,4 +4251,8 @@ async function init() {
   scheduleSessionSave();
 }
 
-init();
+init().catch((e) => {
+  // Kept where the tests (and DevTools) can see it: a start-up failure must never be silent.
+  window.__initError = String((e && e.stack) || e);
+  console.error('notepad.md failed to start', e);
+});

@@ -180,3 +180,6 @@ function Stop-App {
     if ($script:proc) { try { Stop-Process -Id $script:proc.Id -Force -ErrorAction SilentlyContinue } catch {} }
     Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($script:TestDir) -and $_.ProcessName -match "^(notepad-md|notepad.md|np[0-9]+)$" } | Stop-Process -Force
 }
+
+# True when the app under test edits with CodeMirror (codemirror-prototype branch) rather than the textarea.
+function IsCM { return (Eval "String(!!(window.npEditor && window.npEditor.isCodeMirror))") -eq 'true' }

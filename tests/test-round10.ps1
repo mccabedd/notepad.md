@@ -43,7 +43,7 @@ Start-App $Exe $null
 Focus-App | Out-Null
 J "setLayoutMode('edit-only'); editor.value='Ticket: https://example.com/browse/MF-2741 and plain words here'; editor.dispatchEvent(new Event('input')); window.__opened=null; openUrl=(u)=>{window.__opened=u}; window.__copied=null; clipboard.writeText=async (t)=>{window.__copied=t}; window.__saved=null; saveLinkAs=(u)=>{window.__saved=u}; return 1" | Out-Null
 Start-Sleep -Milliseconds 300
-$p = Pt "editorHighlight.querySelector('.ov-url').getClientRects()[0]"
+$p = Pt "edLayer().querySelector('.ov-url').getClientRects()[0]"
 MenuPick $p.x $p.y 2 'link'
 $r = J "return String(window.__copied)"
 T 'Copy link (in the normal right-click menu) copies the address' $r ($r -eq 'https://example.com/browse/MF-2741')

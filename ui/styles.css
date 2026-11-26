@@ -689,6 +689,64 @@ body {
   overflow-y: scroll;
 }
 
+/* CodeMirror mode (editor-facade.js): CodeMirror fills the editor area; it draws its own text,
+   colours and line numbers, so the old coloured layer and gutter stay hidden. */
+.cm-editor-host {
+  position: absolute;
+  inset: 0;
+}
+.cm-editor-host .cm-editor {
+  height: 100%;
+}
+body.cm-mode #editor-highlight,
+body.cm-mode #line-numbers {
+  display: none !important;
+}
+/* The app's marks in CodeMirror (as in the old coloured layer). */
+.cm-content .find-hit { background: var(--find-hit); border-radius: 2px; }
+.cm-content .find-current { background: var(--accent); color: var(--bg) !important; }
+.cm-content .find-current * { color: var(--bg) !important; }
+.cm-line.nav-line { background: var(--nav-line); }
+.cm-line.bm-line.bm-red { background: var(--bm-red-bg); box-shadow: inset 3px 0 0 var(--bm-red); }
+.cm-line.bm-line.bm-orange { background: var(--bm-orange-bg); box-shadow: inset 3px 0 0 var(--bm-orange); }
+.cm-line.bm-line.bm-green { background: var(--bm-green-bg); box-shadow: inset 3px 0 0 var(--bm-green); }
+.cm-content .diag-error,
+.cm-content .diag-warning,
+.cm-content .diag-info {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 2px;
+}
+.cm-content .diag-error { text-decoration-color: var(--diag-error); }
+.cm-content .diag-warning { text-decoration-color: var(--diag-warning); }
+.cm-content .diag-info { text-decoration-color: var(--diag-info); }
+/* The bookmark margin: a dot in the bookmark's colour; clicking an empty spot adds one. */
+.cm-np-bookmarks .cm-gutterElement { width: 16px; cursor: pointer; position: relative; }
+.cm-np-bm::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: calc(0.75em - 5px);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.cm-np-bm.bm-green::before { background: var(--bm-green); }
+.cm-np-bm.bm-orange::before { background: var(--bm-orange); }
+.cm-np-bm.bm-red::before { background: var(--bm-red); }
+.cm-np-bookmarks .cm-gutterElement:hover:empty::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: calc(0.75em - 5px);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  opacity: 0.4;
+}
+
 .editor {
   width: 100%;
   height: 100%;
@@ -1026,36 +1084,36 @@ body.nowrap .preview.code-view pre code {
   --hc-bad: #e0303f;
   --hc-trail: rgba(224, 48, 63, 0.2);
 }
-.editor-highlight .hc-sp {
+:is(.editor-highlight, .cm-content) .hc-sp {
   background-image: radial-gradient(circle at 50% 50%, var(--hc) 0.09em, transparent 0.12em);
   background-size: 1ch 100%;
   background-repeat: repeat-x;
 }
-.editor-highlight .hc-tab {
+:is(.editor-highlight, .cm-content) .hc-tab {
   position: relative;
 }
-.editor-highlight .hc-tab::before {
+:is(.editor-highlight, .cm-content) .hc-tab::before {
   content: '\2192';
   position: absolute;
   left: 0;
   color: var(--hc);
 }
-.editor-highlight .hc-trail {
+:is(.editor-highlight, .cm-content) .hc-trail {
   background-color: var(--hc-trail);
 }
-.editor-highlight .hc-nb {
+:is(.editor-highlight, .cm-content) .hc-nb {
   background-image: radial-gradient(circle at 50% 50%, var(--bm-orange) 0.12em, transparent 0.15em);
   background-size: 1ch 100%;
   background-repeat: no-repeat;
   background-position: center;
   text-decoration: underline dotted var(--bm-orange);
 }
-.editor-highlight .hc-zw,
-.editor-highlight .hc-eol,
-.editor-highlight .hc-bom {
+:is(.editor-highlight, .cm-content) .hc-zw,
+:is(.editor-highlight, .cm-content) .hc-eol,
+:is(.editor-highlight, .cm-content) .hc-bom {
   position: relative;
 }
-.editor-highlight .hc-zw::before {
+:is(.editor-highlight, .cm-content) .hc-zw::before {
   content: '';
   position: absolute;
   left: -1px;
@@ -1064,7 +1122,7 @@ body.nowrap .preview.code-view pre code {
   width: 2px;
   background: var(--hc-bad);
 }
-.editor-highlight .hc-zw::after {
+:is(.editor-highlight, .cm-content) .hc-zw::after {
   content: attr(data-c);
   position: absolute;
   left: 2px;
@@ -1076,8 +1134,8 @@ body.nowrap .preview.code-view pre code {
   border-radius: 2px;
   white-space: nowrap;
 }
-.editor-highlight .hc-eol::after,
-.editor-highlight .hc-bom::before {
+:is(.editor-highlight, .cm-content) .hc-eol::after,
+:is(.editor-highlight, .cm-content) .hc-bom::before {
   position: absolute;
   top: 0.35em;
   font: 600 0.6em/1.2 "Segoe UI", sans-serif;
@@ -1087,11 +1145,11 @@ body.nowrap .preview.code-view pre code {
   padding: 0 2px;
   white-space: nowrap;
 }
-.editor-highlight .hc-eol::after {
+:is(.editor-highlight, .cm-content) .hc-eol::after {
   content: attr(data-e);
   left: 3px;
 }
-.editor-highlight .hc-bom::before {
+:is(.editor-highlight, .cm-content) .hc-bom::before {
   content: 'BOM';
   right: 2px;
   color: var(--hc-bad);
@@ -1797,18 +1855,19 @@ body.tab-dragging * {
 
 /* Indent guides in the editor: a faint line at the start of each indent step.
    A background, not a border, so the coloured layer keeps exactly the textarea's text widths. */
-.editor-highlight .ig {
+:is(.editor-highlight, .cm-content) .ig {
   background-image: linear-gradient(to right, var(--indent-guide) 1px, transparent 1px);
 }
 
 /* Links in the editor: underlined; Ctrl+click opens them in the browser. */
-.editor-highlight .ov-url {
+:is(.editor-highlight, .cm-content) .ov-url {
   text-decoration: underline;
   text-decoration-color: var(--hl-link);
   text-underline-offset: 2px;
 }
 
-body.ctrl-down .editor.over-url {
+body.ctrl-down .editor.over-url,
+body.ctrl-down .cm-editor-host.over-url .cm-content {
   cursor: pointer;
 }
 
@@ -2401,4 +2460,37 @@ pre.plain-text {
   max-height: 50vh;
   overflow: auto;
   overflow-wrap: anywhere;
+}
+
+/* CodeMirror's problem margin (left of the line numbers): as the old gutter's markers. */
+.cm-np-diag .cm-gutterElement { width: 15px; position: relative; }
+.cm-editor-host:not(.np-diagcol) .cm-np-diag { display: none; }
+.cm-np-diag .np-d {
+  position: absolute;
+  left: 2px;
+  top: calc(0.75em - 6px);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  font: 700 9px/12px "Segoe UI", sans-serif;
+  text-align: center;
+  color: #fff;
+  cursor: pointer;
+}
+.cm-np-diag .np-d.error { background: var(--diag-error); }
+.cm-np-diag .np-d.warning { background: var(--diag-warning); color: #000; }
+.cm-np-diag .np-d.info { background: var(--diag-info); }
+.cm-np-diag .np-d.error::before { content: '\00d7'; }
+.cm-np-diag .np-d.warning::before { content: '!'; }
+.cm-np-diag .np-d.info::before { content: 'i'; }
+
+/* A very big document: the preview shows its first part only, and says so. */
+.preview-cut-note {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--code-bg);
+  color: var(--fg-muted);
+  font: 13px/1.4 "Segoe UI", sans-serif;
+  user-select: none;
 }

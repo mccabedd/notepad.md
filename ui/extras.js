@@ -730,9 +730,10 @@ function gotoHeading(i) {
     editor.focus();
     editor.setSelectionRange(s, s);
     // Put the heading near the top of the editor.
-    const lh = parseFloat(getComputedStyle(editor).lineHeight) || 21;
-    let y = h.line * lh;
-    if (!editorHighlight.classList.contains('hidden')) {
+    let y;
+    if (editor.isCodeMirror) y = editor.api.yForOffset(s);
+    else y = h.line * (parseFloat(getComputedStyle(editor).lineHeight) || 21);
+    if (!editor.isCodeMirror && !editorHighlight.classList.contains('hidden')) {
       const r = rangeAtTextOffset(editorHighlight, s);
       const rect = r && (r.getClientRects()[0] || r.getBoundingClientRect());
       if (rect) y = rect.top - editorHighlight.getBoundingClientRect().top + editorHighlight.scrollTop;
@@ -1045,14 +1046,14 @@ let hlWorker = null;
 let hlSeq = 0;
 const hlWaiters = new Map();
 
-function highlightInWorker(text, lang) {
+function highlightInWorker(text, lang, asSpans) {
   if (!hlWorker) {
     hlWorker = new Worker('highlight-worker.js');
     hlWorker.onmessage = (e) => {
       const w = hlWaiters.get(e.data.id);
       if (w) {
         hlWaiters.delete(e.data.id);
-        w.resolve(e.data.html);
+        w.resolve('spans' in e.data ? e.data.spans : e.data.html);
       }
     };
     hlWorker.onerror = (err) => {
@@ -1064,8 +1065,41 @@ function highlightInWorker(text, lang) {
   const id = ++hlSeq;
   return new Promise((resolve, reject) => {
     hlWaiters.set(id, { resolve, reject });
-    hlWorker.postMessage({ id, text, lang });
+    hlWorker.postMessage({ id, text, lang, spans: !!asSpans });
   });
+}
+
+/**
+ * Coloured ranges of `text` for the CodeMirror editor (see hl-spans.js), or null when there is
+ * nothing to colour. Worked out in the worker; a language only the page knows (BBCode) is
+ * coloured here, for files small enough not to hold up typing.
+ */
+/** The same, worked out right now on the main thread (small files); undefined if it can't be. */
+function npHighlightSpansNow(text, lang) {
+  if (!lang) return null;
+  try {
+    return hlHtmlToSpans(highlightCode(text, lang));
+  } catch (e) {
+    return undefined;
+  }
+}
+
+async function npHighlightSpans(text, lang) {
+  if (!lang) return null;
+  let spans = null;
+  try {
+    spans = await highlightInWorker(text, lang, true);
+  } catch (e) {
+    spans = null;
+  }
+  if (spans === null && text.length <= HIGHLIGHT_MAX_CHARS) {
+    try {
+      spans = hlHtmlToSpans(highlightCode(text, lang));
+    } catch (e) {
+      spans = null;
+    }
+  }
+  return spans;
 }
 
 /* ---------- wiring ---------- */

@@ -244,6 +244,7 @@
           <h3>Spelling</h3>
           <label class="check"><input type="checkbox" data-s="spellEnabled" /> Check spelling <kbd>F7</kbd></label>
           <label class="row">Language <select data-s="spellLang"><option value="en_GB">English (UK)</option><option value="en_US">English (US)</option></select></label>
+          <label class="check" title="Log files are mostly written by programs (abbreviations, names, codes), so they are not checked unless this is on"><input type="checkbox" data-s="spellLogs" /> Spell-check log files</label>
         </section>
         <section data-tab="filetypes">
           <h3>Register file types</h3>
@@ -351,6 +352,7 @@
   <script src="vendor/highlight/powershell.min.js"></script>
   <script src="vendor/highlight/dos.min.js"></script>
   <script src="vendor/purify.min.js"></script>
+  <script src="editor-facade.js"></script>
   <script src="sanitize.js"></script>
   <script src="bbcode.js"></script>
   <script src="bbcode-edit.js"></script>
@@ -362,7 +364,9 @@
   <script src="table.js"></script>
   <script src="log-grammar.js"></script>
   <script src="config-grammars.js"></script>
+  <script src="hl-spans.js"></script>
   <script src="extras.js"></script>
   <script src="renderer.js"></script>
+  <script type="module" src="editor-codemirror.js"></script>
 </body>
 </html>

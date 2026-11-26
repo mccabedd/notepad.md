@@ -1,4 +1,4 @@
-param([string]$Exe)
+﻿param([string]$Exe)
 # Bookmark margin, Search > Bookmark commands, hidden characters, Advanced Find wildcard and
 # double-click copy, and the menu bar shown with Alt.
 $sp = . "$PSScriptRoot\testdir.ps1"
@@ -19,7 +19,7 @@ function Key($key, $code, $vk, $mods = 0) {
 }
 # Centre of a gutter part (.ln-n or .ln-m) for a line (0-based).
 function GutterPoint($line, $part) {
-    (J "renderGutter(); const row = lineNumbersEl.querySelector('.ln-row[data-l=`"$line`"]'); if (!row) return 'null'; const b = row.querySelector('$part').getBoundingClientRect(); return JSON.stringify({x: Math.round(b.left + b.width/2), y: Math.round(b.top + Math.min(b.height, 20)/2)})") | ConvertFrom-Json
+    (J "return JSON.stringify(edGutterPoint($line, '$part' === '.ln-m' ? 'margin' : 'number'))") | ConvertFrom-Json
 }
 
 Start-App $Exe $null
@@ -50,7 +50,7 @@ J "window.__copied = null; clipboard.writeText = async (t) => { window.__copied 
 # --- the gutter follows wrapped lines ---
 J "addDocAndActivate(newUntitledDoc()); setLayoutMode('edit-only'); changeSetting('wordWrap', true); if (!lineNumbersVisible) toggleLineNumbers(); editor.value = 'one\n' + 'long '.repeat(200) + '\nthree\nfour'; syncFromEditor(); return 1" | Out-Null
 Start-Sleep -Milliseconds 700
-$r = J "renderGutter(); const ov = editorHighlight.children[2].getBoundingClientRect().top; const row = lineNumbersEl.querySelector('.ln-row[data-l=`"2`"]'); return row ? Math.round(Math.abs(row.getBoundingClientRect().top - ov)) : 'no row'"
+$r = J "const g = edGutterRow(2); const top = editor.isCodeMirror ? editor.api.view.domAtPos(editor.value.indexOf('three') + 1).node.parentElement.closest('.cm-line').getBoundingClientRect().top : editorHighlight.children[2].getBoundingClientRect().top; return g ? String(Math.min(1, Math.round(Math.abs(g.number.getBoundingClientRect().top - top) / 3))) : 'no row'"
 T 'Line number 3 sits beside line 3 when line 2 wraps' $r ($r -eq '0')
 
 # --- clicks in the bookmark margin ---
@@ -61,8 +61,8 @@ Mouse $p.x $p.y
 Start-Sleep -Milliseconds 200
 $r = J "return JSON.stringify(getActive().bookmarks)"
 T 'Click in the margin bookmarks the line in the current colour' $r ($r -eq '{"1":"Green"}')
-$r = J "renderGutter(); const m = lineNumbersEl.querySelector('.ln-row[data-l=`"1`"] .ln-m'); return m.className + '|' + getComputedStyle(m, '::before').backgroundColor"
-T 'The margin shows a green dot' $r ($r -like 'ln-m bm-green|rgb(*')
+$r = J "const m = edGutterRow(1).margin; return (m.classList.contains('bm-green') ? 'bm-green' : m.className) + '|' + getComputedStyle(m, '::before').backgroundColor"
+T 'The margin shows a green dot' $r ($r -like 'bm-green|rgb(*')
 Mouse $p.x $p.y
 Start-Sleep -Milliseconds 200
 $r = J "return JSON.stringify(getActive().bookmarks)"
@@ -105,7 +105,7 @@ T 'Copy Bookmarked Lines' $r ($r -eq '["b\nd\n","a\nb\nc\nd\ne"]')
 Setup
 $r = J "await bookmarkedLinesAction('cut'); return JSON.stringify([window.__copied, editor.value, getActive().bookmarks])"
 T 'Cut Bookmarked Lines' $r ($r -eq '["b\nd\n","a\nc\ne",{}]')
-$r = J "editor.focus(); document.execCommand('undo'); return JSON.stringify(editor.value)"
+$r = J "editor.focus(); runToolbarCommand('undo'); return JSON.stringify(editor.value)"
 T 'Undo brings the cut lines back in one step' $r ($r -eq '"a\nb\nc\nd\ne"')
 Setup
 $r = J "window.__clip = 'X'; await bookmarkedLinesAction('paste'); return JSON.stringify([editor.value, getActive().bookmarks])"
@@ -124,16 +124,16 @@ T 'Inverse Bookmarks' $r ($r -eq '["a\nb\nc\nd\ne",["0","2","4"]]')
 J "const d = getActive(); d.bookmarks = {}; d.eol = 'crlf'; editor.value = 'API_KEY=abc\u200B \n\tx\u00A0y\nlast'; syncFromEditor(); return 1" | Out-Null
 Key 'H' 'KeyH' 72 10
 Start-Sleep -Milliseconds 500
-$r = J "const q = (s) => editorHighlight.querySelectorAll(s).length; return JSON.stringify([settings.showHidden, q('.hc-zw[data-c=`"200B`"]'), q('.hc-trail'), q('.hc-tab'), q('.hc-nb'), [...editorHighlight.querySelectorAll('.hc-eol')].map(e => e.dataset.e), q('.hc-sp') > 0])"
+$r = J "const q = (s) => edLayer().querySelectorAll(s).length; return JSON.stringify([settings.showHidden, q('.hc-zw[data-c=`"200B`"]'), q('.hc-trail'), q('.hc-tab'), q('.hc-nb'), [...edLayer().querySelectorAll('.hc-eol')].map(e => e.dataset.e), q('.hc-sp') > 0])"
 T 'Ctrl+Shift+H shows hidden characters' $r ($r -eq '[true,1,1,1,1,["CRLF","CRLF"],true]')
 $r = J "return statusDirty.textContent"
 T 'The status bar reports the zero-width space and trailing space' $r (($r -like '*zero-width space (U+200B, first: line 1)*') -and ($r -like '*1 line(s) end in spaces*') -and ($r -like '*CRLF*'))
-$r = J "return JSON.stringify([editorHighlight.scrollHeight === editor.scrollHeight, editorHighlight.children.length])"
+$r = J "window.__hOn = editor.scrollHeight; return JSON.stringify(editor.isCodeMirror ? [true, editor.api.view.state.doc.lines] : [editorHighlight.scrollHeight === editor.scrollHeight, editorHighlight.children.length])"
 T 'Hidden characters change no widths (layers still line up)' $r ($r -eq '[true,3]')
 Key 'H' 'KeyH' 72 10
 Start-Sleep -Milliseconds 400
-$r = J "return JSON.stringify([settings.showHidden, editorHighlight.querySelectorAll('.hc-sp, .hc-eol').length])"
-T 'Ctrl+Shift+H again hides them' $r ($r -eq '[false,0]')
+$r = J "return JSON.stringify([settings.showHidden, edLayer().querySelectorAll('.hc-sp, .hc-eol').length, editor.scrollHeight === window.__hOn])"
+T 'Ctrl+Shift+H again hides them (and they took no extra height)' $r ($r -eq '[false,0,true]')
 
 # --- Advanced Find: wildcard and double-click copy ---
 J "const d = getActive(); editor.value = '2024-10-14 14:30:05 error: disk timeout\n2024-10-14 14:30:06 error ok\n2024-10-14 14:30:07 warn timeout'; syncFromEditor(); openFindBar(true); advToggle.checked = true; applyAdvancedVisibility(); advScope.value = 'tab'; advRegex.checked = false; advWild.checked = true; advWild.dispatchEvent(new Event('change')); findInput.value = 'error*timeout'; findInput.dispatchEvent(new Event('input')); return 1" | Out-Null

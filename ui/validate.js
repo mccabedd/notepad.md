@@ -377,6 +377,7 @@ function hideDiagnosticPopup() {
 function diagRect(d) {
   // Where the problem is on screen: its underline, else its line's gutter row, else the editor.
   const doc = getActive();
+  if (editor.isCodeMirror) return editor.api.rectAt(d.s) || editor.getBoundingClientRect();
   const lineEl = (() => {
     const c = lineIndex(doc);
     const l = lineOf(c, d.s);
@@ -468,34 +469,37 @@ function applyDiagnosticFix(doc, d) {
 }
 
 function wireDiagnostics() {
+  // The margin markers: in the old gutter (.ln-d in a row) or CodeMirror's problem margin (.np-d).
+  const gutterEl = editor.isCodeMirror ? editor.host : lineNumbersEl;
+  const MARKER = editor.isCodeMirror ? '.np-d' : '.ln-d';
+  const markerLine = (m, e) => (editor.isCodeMirror ? editor.api.lineAtClientY(e.clientY) : Number(m.closest('.ln-row').dataset.l));
+  const problemsOn = (doc, line) => {
+    const c = lineIndex(doc);
+    return visibleDiagnostics(doc).filter((d) => lineOf(c, Math.min(d.s, doc.content.length)) === line);
+  };
   // A click on a marker explains it straight away (instead of selecting the line).
-  lineNumbersEl.addEventListener(
+  gutterEl.addEventListener(
     'mousedown',
     (e) => {
-      const m = e.target.closest('.ln-d');
+      const m = e.target.closest(MARKER);
       if (!m || e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       const doc = getActive();
-      const line = Number(m.closest('.ln-row').dataset.l);
-      const c = lineIndex(doc);
-      showDiagnosticPopup(visibleDiagnostics(doc).filter((d) => lineOf(c, Math.min(d.s, doc.content.length)) === line), m.getBoundingClientRect());
+      showDiagnosticPopup(problemsOn(doc, markerLine(m, e)), m.getBoundingClientRect());
     },
     true
   );
   // Hover on a gutter marker.
-  lineNumbersEl.addEventListener('mouseover', (e) => {
-    const m = e.target.closest('.ln-d');
+  gutterEl.addEventListener('mouseover', (e) => {
+    const m = e.target.closest(MARKER);
     if (!m) return;
     clearTimeout(diagHoverTimer);
-    const doc = getActive();
-    const line = Number(m.closest('.ln-row').dataset.l);
-    const c = lineIndex(doc);
-    const list = visibleDiagnostics(doc).filter((d) => lineOf(c, Math.min(d.s, doc.content.length)) === line);
+    const list = problemsOn(getActive(), markerLine(m, e));
     diagHoverTimer = setTimeout(() => showDiagnosticPopup(list, m.getBoundingClientRect()), 250);
   });
-  lineNumbersEl.addEventListener('mouseout', (e) => {
-    if (e.target.closest('.ln-d')) {
+  gutterEl.addEventListener('mouseout', (e) => {
+    if (e.target.closest(MARKER)) {
       clearTimeout(diagHoverTimer);
       diagHoverTimer = setTimeout(() => {
         if (diagPop && !diagPop.matches(':hover')) hideDiagnosticPopup();
@@ -505,6 +509,19 @@ function wireDiagnostics() {
   // Hover on an underline in the editor (the coloured layer itself doesn't take the mouse).
   editor.addEventListener('mousemove', (e) => {
     if (!settings.validateTooltips) return;
+    if (editor.isCodeMirror) {
+      // CodeMirror draws the text: the mouse is over the underline itself.
+      const hit = e.target.closest && e.target.closest('.diag-error, .diag-warning, .diag-info');
+      clearTimeout(diagHoverTimer);
+      if (!hit) {
+        if (diagPop && !diagPop.matches(':hover')) diagHoverTimer = setTimeout(hideDiagnosticPopup, 300);
+        return;
+      }
+      const list = problemsOn(getActive(), editor.api.lineAtClientY(e.clientY));
+      const r = hit.getBoundingClientRect();
+      diagHoverTimer = setTimeout(() => showDiagnosticPopup(list, r), 400);
+      return;
+    }
     const spans = editorHighlight.querySelectorAll('.diag-error, .diag-warning, .diag-info');
     if (!spans.length) return;
     const hit = [...spans].find((s) => pointInRects(e.clientX, e.clientY, s.getClientRects()));

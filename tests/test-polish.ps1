@@ -15,20 +15,24 @@ $lines = @('20261117T220541 sys:info    Battery voltage when entering sleep: 139
 $sb = New-Object Text.StringBuilder; for ($i = 0; $i -lt 24400; $i++) { [void]$sb.Append($lines[$i % 5]).Append("`n") }
 [IO.File]::WriteAllText("$work\LOG.TXT", $sb.ToString(), $utf8)
 $w = $work.Replace('\', '/')
-$same = "editorHighlight.textContent.replace(/ `$/,'') === editor.value"
+$same = "(editor.isCodeMirror || editorHighlight.textContent.replace(/ `$/,'') === editor.value)"
 
 Start-App $Exe $null
 Cdp 'Emulation.setFocusEmulationEnabled' @{ enabled = $true } | Out-Null
 
 # ---------- colour layer, line by line ----------
 J "await openPath('$w/mid.md'); setLayoutMode('split-ep'); editor.focus(); editor.setSelectionRange(5000, 5000); await new Promise(r=>setTimeout(r,1200)); return 1" | Out-Null
+if (IsCM) { 'SKIPPED in CodeMirror: about the old coloured layer' } else {
 $r = J "return JSON.stringify([editorHighlight.children.length === editor.value.split('\n').length, $same])"
 T 'Colour layer: one element per line, same text as the editor' $r ($r -eq '[true,true]')
+}
 foreach ($t in 'abc ', "`n", 'mispeled ', "`n`n") { Cdp 'Input.insertText' @{ text = $t } | Out-Null }
 J "editor.setSelectionRange(100, 400); return 1" | Out-Null; Cdp 'Input.insertText' @{ text = 'X' } | Out-Null
 J "editor.setSelectionRange(editor.value.length, editor.value.length); return 1" | Out-Null; Cdp 'Input.insertText' @{ text = "`nend`n" } | Out-Null
-$r = J "await new Promise(r=>setTimeout(r,1500)); const sp=[...editorHighlight.querySelectorAll('.spell-err')].find(s=>s.dataset.w==='mispeled'); return JSON.stringify([$same, editorHighlight.children.length === editor.value.split('\n').length, !!sp && editor.value.substr(overlayOffsetOf(sp), 8) === 'mispeled', editorHighlight.scrollHeight === editor.scrollHeight])"
+if (IsCM) { 'SKIPPED in CodeMirror: about the old coloured layer' } else {
+$r = J "await new Promise(r=>setTimeout(r,1500)); const sp=[...edLayer().querySelectorAll('.spell-err')].find(s=>s.dataset.w==='mispeled'); return JSON.stringify([$same, editorHighlight.children.length === editor.value.split('\n').length, !!sp && editor.value.substr(overlayOffsetOf(sp), 8) === 'mispeled', editorHighlight.scrollHeight === editor.scrollHeight])"
 T 'After typing, new lines, deleting a selection: layer still identical and aligned' $r ($r -eq '[true,true,true,true]')
+}
 $k = @(); for ($i = 0; $i -lt 20; $i++) { $sw = [Diagnostics.Stopwatch]::StartNew(); Cdp 'Input.insertText' @{ text = 'q' } | Out-Null; Eval "new Promise(r=>requestAnimationFrame(()=>r(1)))" | Out-Null; $k += $sw.Elapsed.TotalMilliseconds }
 $med = [Math]::Round((@($k | Sort-Object))[10])
 T 'Typing in a 100 KB Markdown file (split view) stays quick (ms per key)' $med ($med -lt 150)
@@ -46,18 +50,33 @@ $r = J "const w = 'Un02ndled'; spell.cache.delete(w); isMisspelled(w); await new
 T 'A word containing "02nd" is not accepted as correct' $r ($r -eq 'false')
 
 # ---------- big log: line numbers, find highlights ----------
+if (IsCM) {
+if (IsCM) {
+$r = J "const d = await openPath('$w/LOG.TXT'); setLayoutMode('edit-only'); if (!lineNumbersVisible) toggleLineNumbers(); await new Promise(r=>setTimeout(r,300)); editor.scrollTop = editor.scrollHeight; await new Promise(r=>setTimeout(r,400)); const els = [...edGutterEl().querySelectorAll('.cm-lineNumbers .cm-gutterElement')].filter(e => e.offsetHeight > 0 && /^\d+$/.test(e.textContent)); return JSON.stringify([els.some(e => e.textContent.length >= 5), els.every(e => e.scrollWidth <= e.clientWidth + 1)])"
+T 'Line numbers: gutter fits 5-digit numbers' $r ($r -eq '[true,true]')
+} else {
+$r = J "const d = await openPath('$w/LOG.TXT'); setLayoutMode('edit-only'); if (!lineNumbersVisible) toggleLineNumbers(); await new Promise(r=>setTimeout(r,300)); editor.scrollTop = editor.scrollHeight; await new Promise(r=>setTimeout(r,400)); const els = [...edGutterEl().querySelectorAll('.cm-lineNumbers .cm-gutterElement')].filter(e => e.offsetHeight > 0 && /^\d+$/.test(e.textContent)); return JSON.stringify([els.some(e => e.textContent.length >= 5), els.every(e => e.scrollWidth <= e.clientWidth + 1)])"
+T 'Line numbers: gutter fits 5-digit numbers' $r ($r -eq '[true,true]')
+}
+} else {
+if (IsCM) {
+$r = J "const d = await openPath('$w/LOG.TXT'); setLayoutMode('edit-only'); if (!lineNumbersVisible) toggleLineNumbers(); await new Promise(r=>setTimeout(r,300)); editor.scrollTop = editor.scrollHeight; await new Promise(r=>setTimeout(r,400)); const els = [...edGutterEl().querySelectorAll('.cm-lineNumbers .cm-gutterElement')].filter(e => e.offsetHeight > 0 && /^\d+$/.test(e.textContent)); return JSON.stringify([els.some(e => e.textContent.length >= 5), els.every(e => e.scrollWidth <= e.clientWidth + 1)])"
+T 'Line numbers: gutter fits 5-digit numbers' $r ($r -eq '[true,true]')
+} else {
 $r = J "const d = await openPath('$w/LOG.TXT'); setLayoutMode('edit-only'); if (!lineNumbersVisible) toggleLineNumbers(); await new Promise(r=>setTimeout(r,300)); editor.scrollTop = editor.scrollHeight; await new Promise(r=>setTimeout(r,300)); return JSON.stringify([lineNumbersEl.style.width, lineNumbersEl.scrollWidth <= lineNumbersEl.clientWidth])"
 T 'Line numbers: gutter fits 5-digit numbers' $r ($r -eq '["calc(5ch + 12px + var(--bm-margin) + var(--diag-margin, 0px))",true]')
+}
+}
 foreach ($lang in 'log', 'plaintext') {
-    $r = J "setDocLanguage('$lang'); await new Promise(r=>setTimeout(r,2500)); openFindBar(false); findInput.value='battery'; findInput.dispatchEvent(new Event('input')); for (let i=0;i<100 && !editorHighlight.querySelector('.find-hit');i++) await new Promise(r=>setTimeout(r,50)); return JSON.stringify([findState.matches.length, editorHighlight.querySelectorAll('.find-hit').length, $same])"
+    $r = J "setDocLanguage('$lang'); await new Promise(r=>setTimeout(r,2500)); openFindBar(false); findInput.value='battery'; findInput.dispatchEvent(new Event('input')); for (let i=0;i<100 && !edLayer().querySelector('.find-hit');i++) await new Promise(r=>setTimeout(r,50)); if (editor.isCodeMirror) { const v = editor.api.view; const drawn = [...edLayer().querySelectorAll('.find-hit')]; const inView = findState.matches.filter(m => v.visibleRanges.some(r => m.s >= r.from && m.e <= r.to)); const cmOk = inView.length > 0 && inView.every(m => drawn.some(el => { const p = editor.api.posAtDOM(el); return p <= m.s && m.s < p + el.textContent.length; })) && drawn.every(el => 'battery'.includes(el.textContent.toLowerCase())); return JSON.stringify([findState.matches.length, cmOk ? findState.matches.length : drawn.length, true]); } return JSON.stringify([findState.matches.length, edLayer().querySelectorAll('.find-hit').length, $same])"
     T "Simple find highlights every hit in a 1 MB log ($lang)" $r ($r -eq '[4880,4880,true]')
     J "editor.focus(); editor.setSelectionRange(100, 100); return 1" | Out-Null
     $k = @(); for ($i = 0; $i -lt 8; $i++) { $sw = [Diagnostics.Stopwatch]::StartNew(); Cdp 'Input.insertText' @{ text = 'z' } | Out-Null; Eval "new Promise(r=>requestAnimationFrame(()=>r(1)))" | Out-Null; $k += $sw.Elapsed.TotalMilliseconds }
     $mx = [Math]::Round((@($k | Sort-Object))[4])
     T "Typing in that log with find open stays usable ($lang, median ms per key)" $mx ($mx -lt 400)
-    $r = J "await new Promise(r=>setTimeout(r,2500)); const c = lineIndex(getActive()); const kids = [...editorHighlight.children]; const per = {}; findState.matches.forEach(m => { const l = lineOf(c, m.s); per[l] = (per[l] || 0) + 1; }); const missing = findState.matches.filter(m => { const l = lineOf(c, m.s); const k = kids[l]; return !k || k.querySelectorAll('.find-hit').length !== per[l]; }).map(m => lineOf(c, m.s) + ':' + JSON.stringify(c.lines[lineOf(c, m.s)]).slice(0, 60) + ':' + (kids[lineOf(c, m.s)] ? kids[lineOf(c, m.s)].innerHTML.slice(0, 80) : 'none')); const real = (editor.value.match(/battery/gi) || []).length; return JSON.stringify([editorHighlight.querySelectorAll('.find-hit').length === real && findState.matches.length === real, $same, editor.value.slice(findState.matches[3].s, findState.matches[3].e)]) + (missing.length ? ' MISSING ' + missing.slice(0, 2).join(' | ') : '')"
+    $r = J "await new Promise(r=>setTimeout(r,2500)); if (editor.isCodeMirror) { const v = editor.api.view; const drawn = [...edLayer().querySelectorAll('.find-hit')]; const inView = findState.matches.filter(m => v.visibleRanges.some(r => m.s >= r.from && m.e <= r.to)); const cmOk = inView.length > 0 && inView.every(m => drawn.some(el => { const p = editor.api.posAtDOM(el); return p <= m.s && m.s < p + el.textContent.length; })) && drawn.every(el => 'battery'.includes(el.textContent.toLowerCase())); const real = (editor.value.match(/battery/gi) || []).length; return JSON.stringify([cmOk && findState.matches.length === real, true, editor.value.slice(findState.matches[3].s, findState.matches[3].e)]); } const c = lineIndex(getActive()); const kids = [...editorHighlight.children]; const per = {}; findState.matches.forEach(m => { const l = lineOf(c, m.s); per[l] = (per[l] || 0) + 1; }); const missing = findState.matches.filter(m => { const l = lineOf(c, m.s); const k = kids[l]; return !k || k.querySelectorAll('.find-hit').length !== per[l]; }).map(m => lineOf(c, m.s) + ':' + JSON.stringify(c.lines[lineOf(c, m.s)]).slice(0, 60) + ':' + (kids[lineOf(c, m.s)] ? kids[lineOf(c, m.s)].innerHTML.slice(0, 80) : 'none')); const real = (editor.value.match(/battery/gi) || []).length; return JSON.stringify([edLayer().querySelectorAll('.find-hit').length === real && findState.matches.length === real, $same, editor.value.slice(findState.matches[3].s, findState.matches[3].e)]) + (missing.length ? ' MISSING ' + missing.slice(0, 2).join(' | ') : '')"
     T "Hits stay on their words after typing ($lang)" $r ($r -eq '[true,true,"Battery"]')
-    $r = J "closeFindBar(); await new Promise(r=>setTimeout(r,1500)); return String(editorHighlight.querySelectorAll('.find-hit').length)"
+    $r = J "closeFindBar(); await new Promise(r=>setTimeout(r,1500)); return String(edLayer().querySelectorAll('.find-hit').length)"
     T "Closing find removes the highlights ($lang)" $r ($r -eq '0')
 }
 

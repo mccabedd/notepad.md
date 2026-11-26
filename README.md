@@ -193,6 +193,7 @@ notepad.md is released under the [MIT licence](LICENSE). The bundled third-party
 - [smol-toml](https://github.com/squirrelchat/smol-toml) 1.9.1 (BSD-3-Clause) — TOML syntax checking
 - [acorn](https://github.com/acornjs/acorn) 8.19.0 (MIT) — JavaScript syntax checking
 - [DOMPurify](https://github.com/cure53/DOMPurify) 3.4.18 (Apache-2.0) — cleaning HTML in documents
+- [CodeMirror 6](https://codemirror.net) (MIT) with its Lezer, style-mod, w3c-keyname, crelt and find-cluster-break packages — the text editor (codemirror-prototype branch; `NOTEPADMD_EDITOR=textarea` switches back to the old one)
 - en-GB / en-US Hunspell dictionaries from [SCOWL / wordlist.sourceforge.net](http://wordlist.sourceforge.net), via the `dictionary-en` and `dictionary-en-gb` packages (permissive SCOWL licence)
 
 ## Project status and support

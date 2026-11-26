@@ -1,4 +1,4 @@
-param([string]$Exe, [string]$RealLog)
+﻿param([string]$Exe, [string]$RealLog)
 # Line numbers in very big wrapped files (no coloured layer), link colours (dark mode, visited, cleared
 # with Recent Files), Shift+click ranges in the bookmark margin, softer bookmark colours, and the
 # Yes / No / Cancel save prompt.
@@ -29,7 +29,7 @@ Cdp 'Emulation.setFocusEmulationEnabled' @{ enabled = $true } | Out-Null
 # Where a line really starts in the textarea: measured with a copy of the editor's text layout.
 $measure = @'
 async function realY(lineNo) {
-  const cs = getComputedStyle(editor);
+  const cs = getComputedStyle(edTextEl());
   const m = document.createElement('div');
   for (const p of ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'tabSize', 'paddingLeft', 'paddingRight', 'paddingTop', 'boxSizing', 'whiteSpace', 'overflowWrap', 'wordBreak']) m.style[p] = cs[p];
   m.style.width = editor.clientWidth + 'px';
@@ -44,7 +44,7 @@ async function realY(lineNo) {
 }
 '@
 function CheckLine([int]$lineNo) {
-    J "$measure const r = await realY($lineNo); revealRange(getActive(), r.pos, r.pos, true); await new Promise(res => setTimeout(res, 300)); renderGutter(); const row = lineNumbersEl.querySelector('.ln-row[data-l=`"$lineNo`"]'); if (!row) return 'no row'; const gutterY = row.getBoundingClientRect().top - lineNumbersEl.getBoundingClientRect().top + editor.scrollTop; const shown = Number(row.querySelector('.ln-n').textContent); return JSON.stringify([shown, Math.round(gutterY - r.y)])"
+    J "$measure if (editor.isCodeMirror) { const c = lineIndex(getActive()); const pos = c.starts[$lineNo]; revealRange(getActive(), pos, pos, true); await new Promise(res => setTimeout(res, 300)); const g = edGutterRow($lineNo); if (!g) return 'no row'; return JSON.stringify([Number(g.number.textContent), Math.round(g.number.getBoundingClientRect().top - editor.api.rectAt(pos).top)]); } const r = await realY($lineNo); revealRange(getActive(), r.pos, r.pos, true); await new Promise(res => setTimeout(res, 300)); renderGutter(); const row = lineNumbersEl.querySelector('.ln-row[data-l=`"$lineNo`"]'); if (!row) return 'no row'; const gutterY = row.getBoundingClientRect().top - lineNumbersEl.getBoundingClientRect().top + editor.scrollTop; const shown = Number(row.querySelector('.ln-n').textContent); return JSON.stringify([shown, Math.round(gutterY - r.y)])"
 }
 $r = J "const d = await openPath('$w/big.log.1'); setDocLanguage('plaintext'); setLayoutMode('edit-only'); if (!lineNumbersVisible) toggleLineNumbers(); changeSetting('wordWrap', true); await new Promise(r => setTimeout(r, 800)); return JSON.stringify([d.content.length > 5e6, editorHighlight.classList.contains('hidden') || editorHighlight.children.length === 0])"
 T 'A 6 MB log opens without the coloured layer (too big for it)' $r ($r -eq '[true,true]')
@@ -82,7 +82,7 @@ T 'Visited links are remembered after a restart; Clear Recent Files clears them'
 # --- Shift+click in the bookmark margin ---
 Cdp 'Emulation.setDeviceMetricsOverride' @{ width = 1100; height = 720; deviceScaleFactor = 1; mobile = $false } | Out-Null
 function MarginClick([int]$line, [int]$mods = 0) {
-    $p = (J "renderGutter(); const m = lineNumbersEl.querySelector('.ln-row[data-l=`"$line`"] .ln-m').getBoundingClientRect(); return JSON.stringify({x: Math.round(m.left + m.width/2), y: Math.round(m.top + 8)})") | ConvertFrom-Json
+    $p = (J "return JSON.stringify(edGutterPoint($line, 'margin'))") | ConvertFrom-Json
     Cdp 'Input.dispatchMouseEvent' @{ type = 'mousePressed'; x = $p.x; y = $p.y; button = 'left'; buttons = 1; clickCount = 1; modifiers = $mods } | Out-Null
     Cdp 'Input.dispatchMouseEvent' @{ type = 'mouseReleased'; x = $p.x; y = $p.y; button = 'left'; buttons = 0; clickCount = 1; modifiers = $mods } | Out-Null
     Start-Sleep -Milliseconds 150

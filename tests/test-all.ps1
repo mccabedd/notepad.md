@@ -15,7 +15,7 @@ function Check([string]$name, [string]$focusCtx, $before, $after, [bool]$pass) {
 function Focus-Ctx([string]$ctx) {
     switch ($ctx) {
         'preview' { Eval "setLayoutMode(layoutMode==='edit-only'?'preview-only':layoutMode); preview.focus(); document.activeElement===preview" | Out-Null }
-        'editor'  { Eval "if(layoutMode==='preview-only') setLayoutMode('split-ep'); editor.focus(); document.activeElement===editor" | Out-Null }
+        'editor'  { Eval "if(layoutMode==='preview-only') setLayoutMode('split-ep'); editor.focus(); editorHasFocus()" | Out-Null }
         'body'    { Eval "document.activeElement && document.activeElement.blur(); true" | Out-Null }
     }
 }

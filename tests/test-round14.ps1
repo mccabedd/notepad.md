@@ -34,10 +34,10 @@ T 'View > Language lists every language' $m ($m -eq 'Auto-detect from File Name*
 # New tab, type HTML, View > Language > HTML (the menu click sends menu-lang-html)
 J "addDocAndActivate(newUntitledDoc()); setLayoutMode('preview-only'); return 1" | Out-Null
 J "setLayoutMode('edit-only'); editor.focus(); editor.value='<!DOCTYPE html>\n<html>\n  <body class=main>\n    <p>Hello</p>\n  </body>\n</html>\n'; editor.dispatchEvent(new Event('input')); return 1" | Out-Null
-$r = J "return JSON.stringify([getActive().lang, editorHighlight.querySelectorAll('.hljs-tag').length])"
+$r = J "return JSON.stringify([getActive().lang, edLayer().querySelectorAll('.hljs-tag').length])"
 T 'Before: a new tab is Markdown' $r ($r.StartsWith('["markdown",'))
 J "await window.__TAURI__.event.emit('menu-lang-html'); await new Promise(r=>setTimeout(r,300)); return 1" | Out-Null
-$r = J "return JSON.stringify([getActive().lang, editor.classList.contains('hl-active'), editorHighlight.querySelectorAll('.hljs-tag').length > 3, !!editorHighlight.querySelector('.hljs-attr'), statusLang.textContent, getActive().layoutMode])"
+$r = J "return JSON.stringify([getActive().lang, (editor.isCodeMirror || editor.classList.contains('hl-active')), edLayer().querySelectorAll('.hljs-tag').length > 3, !!edLayer().querySelector('.hljs-attr'), statusLang.textContent, getActive().layoutMode])"
 T 'View > Language > HTML colours the HTML in the editor' $r ($r -eq '["html",true,true,true,"HTML","edit-only"]')
 Start-Sleep -Milliseconds 300
 $m = LangMenu
@@ -62,13 +62,13 @@ foreach ($n in 'log.txt', 'LOG.TXT', 'Log.Txt') {
     $r = J "await openPath('$p'); return JSON.stringify([getActive().lang, statusLang.textContent, getActive().layoutMode])"
     T "$n opens as a Log File (Edit Only)" $r ($r -eq '["log","Log File","edit-only"]')
 }
-$r = J "const q=(c)=>[...editorHighlight.querySelectorAll('.hljs-'+c)].map(e=>e.textContent); return JSON.stringify({err:q('logerror'), warn:q('logwarn'), info:q('loginfo'), dbg:q('logdebug'), ok:q('logok'), time:q('logtime').length, path:q('logpath'), stack:q('comment').length, num:q('number').length})"
+$r = J "const q=(c)=>[...edLayer().querySelectorAll('.hljs-'+c)].map(e=>e.textContent); return JSON.stringify({err:q('logerror'), warn:q('logwarn'), info:q('loginfo'), dbg:q('logdebug'), ok:q('logok'), time:q('logtime').length, path:q('logpath'), stack:q('comment').length, num:q('number').length})"
 $o = $r | ConvertFrom-Json
 T 'Log colours: ERROR / failed red, WARN amber, INFO blue, DEBUG grey' $r ((@($o.err) -contains 'ERROR') -and (@($o.err) -contains 'failed') -and (@($o.warn) -contains 'WARN') -and (@($o.info) -contains 'INFO') -and (@($o.dbg) -contains 'DEBUG'))
 T 'Log colours: times, success words, paths, ids and stack lines' $r ($o.time -ge 4 -and (@($o.ok) -contains 'successfully') -and ($o.path -join '') -like 'C:\Data\file.edf*' -and $o.stack -ge 1 -and $o.num -ge 2)
-$r = J "return getComputedStyle(editorHighlight.querySelector('.hljs-logerror')).color + '|' + getComputedStyle(editorHighlight.querySelector('.hljs-logwarn')).color"
+$r = J "return getComputedStyle(edLayer().querySelector('.hljs-logerror')).color + '|' + getComputedStyle(edLayer().querySelector('.hljs-logwarn')).color"
 T 'Log colours are actually applied' $r ($r -match '^rgb\(\d+, \d+, \d+\)\|rgb\(\d+, \d+, \d+\)$' -and $r.Split('|')[0] -ne $r.Split('|')[1])
-$r = J "const s=getComputedStyle(editorHighlight.querySelector('.hljs-logerror')); return s.fontWeight + '|' + s.fontStyle"
+$r = J "const s=getComputedStyle(edLayer().querySelector('.hljs-logerror')); return s.fontWeight + '|' + s.fontStyle"
 T 'Log colours keep the editor text widths (no bold/italic)' $r ($r -eq '400|normal')
 foreach ($n in 'notes.txt', 'mylog.txt', 'log.txt.bak', 'app.log') {
     Write-NoBom "$work\$n" $logText

@@ -36,7 +36,13 @@ jobs:
       - name: JavaScript syntax
         run: |
           $bad = 0
-          foreach ($f in Get-ChildItem ui/*.js) { node --check $f.FullName; if ($LASTEXITCODE) { $bad++ } }
+          $tmp = Join-Path $env:RUNNER_TEMP 'jscheck'; New-Item -ItemType Directory -Force $tmp | Out-Null
+          foreach ($f in Get-ChildItem ui/*.js) {
+            # ES modules (import ...) are checked as .mjs, so Node reads them as modules.
+            $file = $f.FullName
+            if (Select-String -Path $file -Pattern '^\s*import\s' -Quiet) { $file = Join-Path $tmp ($f.BaseName + '.mjs'); Copy-Item $f.FullName $file }
+            node --check $file; if ($LASTEXITCODE) { $bad++ }
+          }
           if ($bad) { throw "$bad file(s) with syntax errors" }
 
       - uses: dtolnay/rust-toolchain@stable

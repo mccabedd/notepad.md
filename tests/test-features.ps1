@@ -38,7 +38,7 @@ $files = @(
   @('index.php','php','edit-only'), @('config.toml','toml','edit-only'))
 foreach ($f in $files) {
     $p = ("$W\" + $f[0]).Replace('\', '\\')
-    $info = J "const d = await openPath('$p'); await new Promise(r=>requestAnimationFrame(()=>r())); return JSON.stringify({lang:d.lang, layout:d.layoutMode, spans: editorHighlight.querySelectorAll('[class^=hljs-]').length, status: statusLang.textContent, enc: d.encoding, eol: d.eol})"
+    $info = J "const d = await openPath('$p'); await new Promise(r=>requestAnimationFrame(()=>r())); return JSON.stringify({lang:d.lang, layout:d.layoutMode, spans: edLayer().querySelectorAll('[class^=hljs-]').length, status: statusLang.textContent, enc: d.encoding, eol: d.eol})"
     $o = $info | ConvertFrom-Json
     $needSpans = $f[1] -ne 'plaintext'
     $ok = ($o.lang -eq $f[1]) -and ($o.layout -eq $f[2]) -and ((-not $needSpans) -or $o.spans -gt 0)
@@ -81,7 +81,7 @@ T 'Unsaved tab shows * before name' $r ($r -like '*|notes.md|*')
 $r = J "const t=tabbarEl.querySelector('.tab.active .tab-dirty'); return (t.compareDocumentPosition(tabbarEl.querySelector('.tab.active .tab-title')) & Node.DOCUMENT_POSITION_FOLLOWING) ? 'left-of-name' : 'right'"
 T 'Asterisk sits left of the name' $r ($r -eq 'left-of-name')
 # undo back to saved text clears the marker
-J "editor.focus(); document.execCommand('undo'); return 1" | Out-Null; Start-Sleep -Milliseconds 200
+J "editor.focus(); runToolbarCommand('undo'); return 1" | Out-Null; Start-Sleep -Milliseconds 200
 $r = J "const d=getActive(); return d.dirty + '|' + tabbarEl.querySelector('.tab.active .tab-dirty').textContent"
 T 'Undo to saved text clears *' $r ($r -eq 'false|')
 Cdp 'Input.insertText' @{ text = "`nNew line typed." } | Out-Null; Start-Sleep -Milliseconds 300
@@ -109,30 +109,30 @@ T 'Close All keeps pinned + unsaved tabs' $r ($r -match '^2:data.json,notes.md$'
 
 # ---------- spellcheck ----------
 J "setActiveTab(docs.find(d=>d.path&&d.path.endsWith('notes.md')).id); setSpellLang('en_GB'); return 1" | Out-Null
-$ok = WaitFor "editorHighlight.querySelectorAll('.spell-err').length > 0" 15000
-$gb = J "return [...editorHighlight.querySelectorAll('.spell-err')].map(s=>s.textContent).join(',')"
+$ok = WaitFor "edLayer().querySelectorAll('.spell-err').length > 0" 15000
+$gb = J "return [...edLayer().querySelectorAll('.spell-err')].map(s=>s.textContent).join(',')"
 T 'en-GB flags editor words' $gb ($ok -and $gb -match 'color' -and $gb -match 'Ths' -and $gb -match 'mispeled' -and $gb -notmatch 'colour')
 T 'Code, URLs, camelCase not flagged' $gb ($gb -notmatch 'inlineCodeWord|https|example|somepath|greeting|const')
 $pv = J "return [...CSS.highlights.get('spell')].map(r=>r.toString()).join(',')"
 T 'Preview underlines (Highlight API)' $pv ($pv -match 'color' -and $pv -match 'mispeled' -and $pv -notmatch 'colour')
 Shot 'spell-gb'
 J "setSpellLang('en_US'); return 1" | Out-Null
-$ok = WaitFor "[...editorHighlight.querySelectorAll('.spell-err')].some(s=>s.textContent==='colour')" 15000
-$us = J "return [...editorHighlight.querySelectorAll('.spell-err')].map(s=>s.textContent).join(',')"
+$ok = WaitFor "[...edLayer().querySelectorAll('.spell-err')].some(s=>s.textContent==='colour')" 15000
+$us = J "return [...edLayer().querySelectorAll('.spell-err')].map(s=>s.textContent).join(',')"
 T 'en-US flags colour, not color' $us ($ok -and $us -match 'colour' -and $us -notmatch '(^|,)color(,|$)')
 T 'Status bar shows language' (J "return statusSpell.textContent") ((J "return statusSpell.textContent") -eq 'English (US)')
 $sg = J "return (await requestSuggestions('mispeled')).join(',')"
 T 'Suggestions for mispeled' $sg ($sg -match 'misspelled')
 $r = J @"
-const span=[...editorHighlight.querySelectorAll('.spell-err')].find(s=>s.textContent==='mispeled');
+const span=[...edLayer().querySelectorAll('.spell-err')].find(s=>s.textContent==='mispeled');
 const o=overlayOffsetOf(span); replaceEditorRange(o, o+8, 'misspelled');
 await new Promise(r=>setTimeout(r,100));
 return getActive().content.includes('a misspelled word') + '|' + preview.textContent.includes('a misspelled word');
 "@
 T 'Replace from suggestion (editor+preview synced)' $r ($r -eq 'true|true')
-$r = J "addUserWord('Ths'); await new Promise(r=>setTimeout(r,200)); return [...editorHighlight.querySelectorAll('.spell-err')].some(s=>s.textContent==='Ths')"
+$r = J "addUserWord('Ths'); await new Promise(r=>setTimeout(r,200)); return [...edLayer().querySelectorAll('.spell-err')].some(s=>s.textContent==='Ths')"
 T 'Add to dictionary removes underline' $r ($r -eq $false)
-$r = J "toggleSpell(); await new Promise(r=>setTimeout(r,350)); return editorHighlight.querySelectorAll('.spell-err').length + '|' + statusSpell.textContent"
+$r = J "toggleSpell(); await new Promise(r=>setTimeout(r,350)); return edLayer().querySelectorAll('.spell-err').length + '|' + statusSpell.textContent"
 T 'F7 toggle turns spellcheck off' $r ($r -eq '0|Spelling off')
 J "toggleSpell(); setSpellLang('en_GB'); return 1" | Out-Null
 # right-click in preview opens suggestion menu
@@ -170,6 +170,7 @@ J "setActiveTab(docs.find(d=>d.path&&d.path.endsWith('notes.md')).id); setLayout
 J "setActiveTab(docs.find(d=>d.path&&d.path.endsWith('app.js')).id); return 1" | Out-Null; Start-Sleep -Milliseconds 300; Shot 'js-dark'
 
 # ---------- overlay alignment check ----------
+if (IsCM) { 'SKIPPED in CodeMirror: about the old coloured layer' } else {
 $r = J @"
 setActiveTab(docs.find(d=>d.path&&d.path.endsWith('notes.md')).id); setLayoutMode('edit-only');
 const long = 'word '.repeat(400) + '\n' + 'x'.repeat(50) + '\n\n';
@@ -180,6 +181,7 @@ return a + '/' + b + ' top=' + editor.scrollTop + '/' + editorHighlight.scrollTo
 "@
 $m = [regex]::Match($r, '(\d+)/(\d+) top=(\d+)/(\d+)')
 T 'Overlay wraps + scrolls exactly like textarea' $r ($m.Success -and [math]::Abs([int]$m.Groups[1].Value - [int]$m.Groups[2].Value) -le 1 -and [math]::Abs([int]$m.Groups[3].Value - [int]$m.Groups[4].Value) -le 1)
+}
 
 # ---------- session: close + relaunch ----------
 $before = J @"
