@@ -229,8 +229,12 @@ $mb = [math]::Round((Get-Item $big).Length / 1MB, 1)
 $r = J "const t=performance.now(); await openPath('$w\\big.log'); const ms=Math.round(performance.now()-t); const d=getActive(); return JSON.stringify([d.layoutMode, editor.classList.contains('hl-active'), ms])"
 $o = $r | ConvertFrom-Json
 T "A $mb MB log opens (Edit Only, no colouring)" $r ($o[0] -eq 'edit-only' -and $o[1] -eq $false -and $o[2] -lt 15000)
-$r = J "editor.focus(); editor.setSelectionRange(editor.value.length, editor.value.length); const t=performance.now(); for (let i=0;i<5;i++) { document.execCommand('insertText', false, 'x'); } const ms=Math.round((performance.now()-t)/5); return ms"
-T 'Typing in the large file stays responsive (ms per key)' $r ([int]$r -lt 400)
+# Most of a key's time in a file this big is the browser's own text box, which varies a lot between
+# PCs and runs. So this checks what the app controls: its own work per key, against the bare text
+# box measured in the same run (median of 7 keys each), plus a generous absolute ceiling.
+$r = J "editor.focus(); editor.setSelectionRange(editor.value.length, editor.value.length); const med = () => { const a = []; for (let i = 0; i < 7; i++) { const t = performance.now(); document.execCommand('insertText', false, 'x'); a.push(performance.now() - t); } a.sort((x, y) => x - y); return a[3]; }; med(); const app = med(); editor.removeEventListener('input', syncFromEditor); const bare = med(); editor.addEventListener('input', syncFromEditor); syncFromEditor(); return JSON.stringify([Math.round(app), Math.round(bare)])"
+$o = $r | ConvertFrom-Json
+T 'Typing in the large file: app work per key is small next to the text box itself ([app, bare] ms)' $r ($o[0] -le $o[1] * 1.3 + 15 -and $o[0] -lt 1500)
 $r = J "const t=performance.now(); openFindBar(); findInput.value='id 1234567890'; await refreshFind(false); await new Promise(r=>setTimeout(r,300)); return Math.round(performance.now()-t)"
 T 'Find in the large file works' $r ([int]$r -lt 15000)
 J "closeFindBar(); window.__askAnswer=false; await closeTab(getActive().id); window.__askAnswer=true; return 1" | Out-Null

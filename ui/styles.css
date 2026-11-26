@@ -636,6 +636,10 @@ body {
 .line-numbers {
   --bm-margin: 16px; /* the bookmark margin, right of the numbers */
   position: relative;
+  /* Redrawing the numbers (every scroll and key) must not make the browser lay out the editor
+     beside them again: with a big file that alone cost 60+ ms a frame. Its size never depends on
+     its contents (the width is set from the digit count, the height comes from the row). */
+  contain: strict;
   flex: 0 0 auto;
   width: calc(1ch + 12px + var(--bm-margin));
   overflow: hidden;
@@ -656,6 +660,9 @@ body {
    syntax colours and spelling underlines. Every metric below must match between the two. */
 .editor-wrap {
   position: relative;
+  /* Its size comes from the window layout, never from the text inside: changes elsewhere (tabs,
+     status bar, line numbers) then never make the browser lay out a big document again. */
+  contain: strict;
   flex: 1 1 auto;
   min-width: 0;
   background: var(--edit-bg, var(--bg));
@@ -758,6 +765,8 @@ body.nowrap .preview.code-view pre code {
   flex: 1 1 auto;
   min-width: 0;
   overflow-y: auto;
+  /* A document's CSS (position: fixed...) can't draw outside the preview, over the app. */
+  contain: paint;
   padding: 14px 24px;
   background: var(--preview-bg, var(--bg-alt));
   color: var(--preview-fg, var(--fg));
@@ -1706,6 +1715,8 @@ body.adv-maximised .adv-pane {
 /* ---------- Status bar ---------- */
 
 .statusbar {
+  /* Its text changes on every key (character count): keep that from relaying out anything else. */
+  contain: layout paint;
   display: flex;
   gap: 16px;
   padding: 4px 12px;

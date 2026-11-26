@@ -125,10 +125,41 @@ fn temp_path_for(path: &Path) -> PathBuf {
     path.with_file_name(format!(".{}.{}-{}.notepadmd-tmp", name, std::process::id(), n))
 }
 
+/// Where ReplaceFileW moves the original while it swaps the files in (same folder, so same volume).
+fn backup_path_for(tmp: &Path) -> PathBuf {
+    tmp.with_extension("notepadmd-bak")
+}
+
+/// After ReplaceFileW failed: make sure a document is back at `path`.
+///
+/// Some failures happen after Windows has already moved the original out of the way (error 1176
+/// "the replaced file no longer exists", 1177 "still exists with a different name"). Deleting the
+/// temporary file then, as a plain cleanup would, leaves no file at all. So: if the document is
+/// missing, the new contents (what the user asked to save) are moved into place; if that fails too,
+/// the original is put back from the backup. Only when the document is safely at `path` are the
+/// leftovers removed. Returns true when the new contents ended up saved.
+fn recover_after_failed_replace(path: &Path, tmp: &Path, backup: &Path) -> bool {
+    let mut saved = false;
+    if !path.exists() {
+        if tmp.exists() && fs::rename(tmp, path).is_ok() {
+            saved = true;
+        } else if backup.exists() {
+            let _ = fs::rename(backup, path);
+        }
+    }
+    if path.exists() {
+        let _ = fs::remove_file(tmp);
+        let _ = fs::remove_file(backup);
+    }
+    saved
+}
+
 /// Saves `bytes` to `path` without ever leaving a half-written document behind:
 /// the new contents go to a temporary file in the same folder, are flushed to disk, and then
 /// replace the original in one step (ReplaceFileW keeps its attributes, permissions and creation
-/// time). If anything fails the original file is untouched and the temporary file is removed.
+/// time). If writing the temporary file fails, the original is untouched. If the swap itself fails
+/// part-way (Windows had already moved the original aside), the document is put back in place,
+/// with the new contents when possible, otherwise the original.
 pub fn save_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
     // A symbolic link: save into the file it points to and keep the link itself.
     let resolved;
@@ -163,21 +194,35 @@ pub fn save_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
         }
         return Err(friendly_error(&e));
     }
-    let result = if path.exists() {
-        // 0x2 = REPLACEFILE_IGNORE_MERGE_ERRORS
-        let ok = unsafe { ReplaceFileW(wide(path).as_ptr(), wide(&tmp).as_ptr(), std::ptr::null(), 0x2, std::ptr::null(), std::ptr::null()) };
-        if ok != 0 {
-            Ok(())
-        } else {
-            Err(std::io::Error::last_os_error())
-        }
-    } else {
-        fs::rename(&tmp, path)
-    };
-    result.map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        friendly_error(&e)
-    })
+    if !path.exists() {
+        return fs::rename(&tmp, path).map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            friendly_error(&e)
+        });
+    }
+    // The original is moved to a backup name during the swap, so a failure part-way through can
+    // always be undone (see recover_after_failed_replace).
+    let backup = backup_path_for(&tmp);
+    // 0x2 = REPLACEFILE_IGNORE_MERGE_ERRORS
+    let ok = unsafe { ReplaceFileW(wide(path).as_ptr(), wide(&tmp).as_ptr(), wide(&backup).as_ptr(), 0x2, std::ptr::null(), std::ptr::null()) };
+    if ok != 0 {
+        let _ = fs::remove_file(&backup);
+        return Ok(());
+    }
+    let e = std::io::Error::last_os_error();
+    if recover_after_failed_replace(path, &tmp, &backup) {
+        return Ok(());
+    }
+    if !path.exists() {
+        // Nothing could be put back (very unlikely): say exactly where the copies are.
+        return Err(format!(
+            "{} The file could not be put back in place. Your text is still open here (use Save As), and copies may be next to it: {} (new) or {} (previous).",
+            friendly_error(&e),
+            tmp.display(),
+            backup.display()
+        ));
+    }
+    Err(friendly_error(&e))
 }
 
 #[cfg(test)]
@@ -285,6 +330,34 @@ mod tests {
         assert!(e.contains("Save As") && e.contains("has not been changed"), "{}", e);
         assert_eq!(fs::read(&p).unwrap(), b"original");
         assert_eq!(fs::read_dir(&d).unwrap().count(), 1, "no temporary file left behind");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    /// The states ReplaceFileW can leave behind when it fails part-way (Microsoft's documentation,
+    /// errors 1176 / 1177): each one ends with a document at the path and no leftovers.
+    #[test]
+    fn failed_swap_always_leaves_a_document() {
+        let d = scratch("swap");
+        let p = d.join("doc.txt");
+        let tmp = d.join(".doc.txt.1-0.notepadmd-tmp");
+        let bak = backup_path_for(&tmp);
+        // 1176 without a backup name: the original is gone, the new text is still in the temporary file.
+        fs::write(&tmp, b"new").unwrap();
+        assert!(recover_after_failed_replace(&p, &tmp, &bak));
+        assert_eq!(fs::read(&p).unwrap(), b"new");
+        assert_eq!(fs::read_dir(&d).unwrap().count(), 1);
+        // 1177: the original was moved to the backup name and the temporary file can't be moved
+        // either (here: it's gone): the original comes back.
+        fs::rename(&p, &bak).unwrap();
+        assert!(!recover_after_failed_replace(&p, &tmp, &bak));
+        assert_eq!(fs::read(&p).unwrap(), b"new");
+        assert_eq!(fs::read_dir(&d).unwrap().count(), 1);
+        // 1175 and other early failures: nothing moved, the document is untouched, leftovers go.
+        fs::write(&tmp, b"newer").unwrap();
+        fs::write(&bak, b"stale").unwrap();
+        assert!(!recover_after_failed_replace(&p, &tmp, &bak));
+        assert_eq!(fs::read(&p).unwrap(), b"new");
+        assert_eq!(fs::read_dir(&d).unwrap().count(), 1);
         let _ = fs::remove_dir_all(&d);
     }
 

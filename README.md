@@ -151,7 +151,7 @@ cargo run
   - `bbcode-edit.js` — typing in the BBCode preview (turned back into BBCode) and the BBCode toolbar
   - `preview-links.js` — pasting into the preview (links, sanitised HTML) and the link box on hover
   - `position-sync.js` — the source-to-preview mapping behind synchronised scrolling and keeping your place when switching view
-  - `sanitize.js` — removes unsafe HTML from the Markdown preview, printouts and HTML exports
+  - `sanitize.js` — cleans HTML in documents with DOMPurify before the preview, printouts and HTML exports show it (plus the app's own rules, and the round trip of removed HTML when editing the preview)
   - `spell-worker.js` — spellchecker (runs off the UI thread)
 - `ui/vendor/` — third-party libraries (see below)
 - `src-tauri/` — Rust backend (`linkmenu.rs` adds the link items to the editor's right-click menu): `main.rs` (window/menu setup, file commands, session storage, menu-bar visibility), `fileio.rs` (encoding detection incl. Windows-1252, crash-safe saving) `system.rs` (file-type registration, self-update via Windows' built-in `curl.exe` / `certutil`: only from this repository's GitHub releases, and only when the download matches the SHA-256 GitHub publishes for it) and `instance.rs` (single instance, local images for the preview)
@@ -160,6 +160,24 @@ cargo run
 
 - Rust unit tests (encoding, saving, registration in a throwaway registry key, updater checks): `cd src-tauri` then `cargo test`.
 - App tests drive the real exe through WebView2's DevTools port: `powershell -ExecutionPolicy Bypass -File tests\run-all.ps1` (build the release exe first). They work in `%TEMP%\notepadmd-tests` (or `NOTEPADMD_TEST_DIR`) with their own session, WebView2 profile and registry key, so your real settings, documents and file associations are never touched. `tests\bench.ps1 -Exe <path>` measures startup, typing, rendering and saving.
+- On GitHub, every push is built and checked on a clean Windows machine (vendored-file hashes, JavaScript syntax, Clippy, Rust tests, `cargo audit`), and the built `.exe` is kept with its SHA-256 (`.github/workflows/ci.yml`; the app suites can be started from the Actions tab). `tests\check-vendor.ps1` checks the vendored libraries locally.
+- `tests\test-security.ps1` throws a corpus of known HTML attacks (script injection, parser tricks, hostile links, DOM clobbering) at the preview, and checks the editable preview's round trip, HTML export and BBCode.
+
+## Known limitations
+
+- **Very large files.** notepad.md edits text in the browser's own text box (WebView2), which lays out the whole document after every change. Up to a few MB that is quick; measured on one PC (Intel Core Ultra 5, 32 GB), a key in a 10 MB log takes about 0.3 s to appear, and in a 25 MB log about 1 s. Files over 5 MB open in Edit Only without colours or spell checking. Over 4 MB, find matches and bookmarked lines are not highlighted in the text itself (Find Next still selects each match, and bookmarks still show beside the line numbers). Files over 100 MB are not opened.
+- **Pictures from the web in a document are loaded when it is previewed** (as in a browser), so whoever hosts a picture can see that it was opened.
+- **Windows only** (10 and 11, 64-bit). The release `.exe` is not code-signed, so Windows SmartScreen may warn the first time it is run.
+
+### Checking a download
+
+Each release lists the SHA-256 of its `.exe`. To check yours, run this in PowerShell and compare:
+
+```powershell
+Get-FileHash .\notepad.md-vX.Y.Z-win-x64.exe -Algorithm SHA256
+```
+
+Security problems: see [SECURITY.md](SECURITY.md).
 
 ## Licence
 
@@ -174,6 +192,7 @@ notepad.md is released under the [MIT licence](LICENSE). The bundled third-party
 - [js-yaml](https://github.com/nodeca/js-yaml) 5.5.0 (MIT) — YAML syntax checking
 - [smol-toml](https://github.com/squirrelchat/smol-toml) 1.9.1 (BSD-3-Clause) — TOML syntax checking
 - [acorn](https://github.com/acornjs/acorn) 8.19.0 (MIT) — JavaScript syntax checking
+- [DOMPurify](https://github.com/cure53/DOMPurify) 3.4.18 (Apache-2.0) — cleaning HTML in documents
 - en-GB / en-US Hunspell dictionaries from [SCOWL / wordlist.sourceforge.net](http://wordlist.sourceforge.net), via the `dictionary-en` and `dictionary-en-gb` packages (permissive SCOWL licence)
 
 ## Project status and support

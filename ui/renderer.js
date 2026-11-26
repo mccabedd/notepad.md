@@ -281,7 +281,10 @@ function setupMarkdownEngine() {
     // (also an empty element the sanitiser had to clean, e.g. an <img> that lost an onerror)
     filter: (node) => node.hasAttribute && node.hasAttribute('data-np-raw') && (node.nodeName === 'WBR' || !node.firstChild),
     // (SVG and MathML blocks, see previewHtmlForMarkdown(), get blank lines round them)
-    replacement: (content, node) => (node.hasAttribute('data-np-block') ? '\n\n' + node.getAttribute('data-np-raw') + '\n\n' : node.getAttribute('data-np-raw')),
+    replacement: (content, node) => {
+      const raw = npRawDecode(node.getAttribute('data-np-raw'));
+      return node.hasAttribute('data-np-block') ? '\n\n' + raw + '\n\n' : raw;
+    },
   });
   turndownService.addRule('codeCopyButton', {
     filter: (node) => node.nodeName === 'BUTTON' && node.classList.contains('code-copy-btn'),
@@ -1905,7 +1908,7 @@ function renderPreview(doc) {
     ensureTrailingParagraph();
   } else if (mode === 'bbcode') {
     preview.setAttribute('contenteditable', 'true'); // typing here writes BBCode back to the source
-    preview.innerHTML = renderBBCode(doc.content);
+    setSanitizedHtml(preview, renderBBCode(doc.content), false); // safe by construction; cleaned anyway
     markVisitedLinks();
     addCodeCopyButtons();
   } else if (mode === 'plain') {

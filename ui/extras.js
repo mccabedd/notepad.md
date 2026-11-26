@@ -505,7 +505,7 @@ function renderDocHtml(doc, forFile) {
   const render = langInfo(doc).render;
   const box = document.createElement('div');
   if (render === 'markdown') box.innerHTML = sanitizeHtml(marked_.parse(doc.content));
-  else if (render === 'bbcode') box.innerHTML = renderBBCode(doc.content);
+  else if (render === 'bbcode') box.innerHTML = sanitizeHtml(renderBBCode(doc.content));
   else if (render === 'plain') {
     // Plain Text: the text exactly as written (no Markdown).
     const pre = document.createElement('pre');
@@ -614,9 +614,14 @@ async function exportPdf() {
   }
 }
 
+const EXPORT_CSP = "default-src 'none'; script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'; style-src 'unsafe-inline'; img-src http: https: data: file:; font-src data:";
+
 function buildExportHtml(doc) {
   return (
-    '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8" />\n<meta name="viewport" content="width=device-width, initial-scale=1" />\n<title>' +
+    '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8" />\n' +
+    // Opened in a browser, the page has none of the app's protection: no scripts at all, ever.
+    '<meta http-equiv="Content-Security-Policy" content="' + EXPORT_CSP + '" />\n' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1" />\n<title>' +
     escapeHtml(docBaseName(doc)) +
     '</title>\n<style>' +
     EXPORT_CSS +

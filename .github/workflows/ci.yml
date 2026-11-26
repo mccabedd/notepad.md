@@ -1,0 +1,112 @@
+# Builds and checks every push and pull request on a clean Windows machine, and keeps the built exe
+# with its SHA-256, so a release can be traced to the exact commit and checks it came from.
+# The app (WebView2) suites take about 25 minutes: run them from the Actions tab
+# ("Run workflow", tick "Also run the app test suites"). The suites that press real keys or move the
+# real mouse are never run here.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      app_tests:
+        description: Also run the app test suites (about 25 minutes)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vendored libraries are unchanged
+        run: ./tests/check-vendor.ps1
+
+      - name: JavaScript syntax
+        run: |
+          $bad = 0
+          foreach ($f in Get-ChildItem ui/*.js) { node --check $f.FullName; if ($LASTEXITCODE) { $bad++ } }
+          if ($bad) { throw "$bad file(s) with syntax errors" }
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --release
+
+      - name: Rust unit tests
+        working-directory: src-tauri
+        run: cargo test --release
+
+      - name: Dependency advisories (cargo audit)
+        working-directory: src-tauri
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+
+      - name: Build the release exe
+        run: ./build.ps1 -Release
+
+      - name: SHA-256
+        run: |
+          $exe = Get-ChildItem src-tauri/target/release/notepad.md-v*-win-x64.exe | Select-Object -First 1
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          "$hash  $($exe.Name)  (commit $env:GITHUB_SHA)" | Tee-Object -FilePath sha256.txt
+          "### $($exe.Name)`nSHA-256 ``$hash```ncommit ``$env:GITHUB_SHA``" >> $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notepad.md-exe
+          path: |
+            src-tauri/target/release/notepad.md-v*-win-x64.exe
+            src-tauri/target/release/notepad.md.exe
+            sha256.txt
+          if-no-files-found: error
+
+  app-tests:
+    if: github.event_name == 'workflow_dispatch' && inputs.app_tests
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: notepad.md-exe
+          path: built
+
+      - name: App test suites
+        env:
+          NOTEPADMD_TEST_DIR: ${{ runner.temp }}\notepadmd-tests
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tests/run-all.ps1 -Exe built/src-tauri/target/release/notepad.md.exe
+          $summary = Join-Path $env:NOTEPADMD_TEST_DIR 'results/summary.txt'
+          Get-Content $summary
+          if (Select-String -Path $summary -Pattern 'FAIL: [1-9]|TIMED OUT' -Quiet) { throw 'Some app tests failed (see the results artifact)' }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: app-test-results
+          path: ${{ runner.temp }}/notepadmd-tests/results
