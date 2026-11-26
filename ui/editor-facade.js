@@ -1,6 +1,6 @@
 /* Which text editor the page uses, decided before any other script runs.
  *
- * codemirror-prototype branch: the editor is CodeMirror 6 (ui/editor-codemirror.js), which only lays
+ * The editor is CodeMirror 6 (ui/editor-codemirror.js), which only lays
  * out and draws the lines in view, so big files stay quick. To compare with the old editor, set
  * localStorage 'notepadmd.editor' to 'textarea' and restart.
  *

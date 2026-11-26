@@ -257,7 +257,7 @@ fn main() {
         return; // handed to the running window
     }
 
-    // codemirror-prototype branch: NOTEPADMD_EDITOR=textarea (or codemirror) chooses the editor for
+    // NOTEPADMD_EDITOR=textarea (or codemirror) chooses the editor for
     // this run (the tests run both). Set before any page script runs; see ui/editor-facade.js.
     let editor_mode = match std::env::var("NOTEPADMD_EDITOR").as_deref() {
         Ok("textarea") => "textarea",

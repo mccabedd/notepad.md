@@ -59,7 +59,7 @@ Built with [Tauri](https://tauri.app) (Rust backend + the OS's built-in WebView2
 - **Code blocks in the preview** — `Arrow Down` at the end, or `Enter` on an empty last line, takes you out of the block (there is always a line below it to click into).
 - **Tables in the preview** — right-click a cell: add row above/below, add column left/right, move row up/down, move column left/right, align column (left/center/right), delete row/column/table. `Tab` / `Shift+Tab` move between cells (Tab in the last cell adds a row), `Enter` moves down.
 - **Syntax colouring** for XML, HTML, CSS, YAML, JSON, INI, TOML, Python, JavaScript, Java, C, C#, C++, PowerShell (`.ps1`), MS-DOS batch (`.bat` / `.cmd`), PHP, Markdown, **BBCode** (`.bbcode` / `.bb`) and **log files**. A file named `log.txt` (any upper/lower case) opens as a Log File: error/fail words in red, warnings amber, info blue, debug grey, success words green, plus timestamps, `[thread]` tags, `key=value` names, paths, numbers, IDs and stack-trace lines. Other `.txt` files stay plain text; any tab can be switched to Log File from View > Language. Code files show a read-only coloured view in the preview pane; BBCode shows a formatted, read-only preview (bold/italic/underline, links, images, quotes, lists, colours, sizes, code, tables, spoilers).
-- **Spell checking** in English (UK) or English (US) in the editor and preview; right-click a red-underlined word for suggestions, *Add to dictionary* or *Ignore*. `F7` toggles it; click the language in the status bar to switch.
+- **Spell checking** in English (UK) or English (US) in the editor and preview; right-click a red-underlined word for suggestions, *Add to dictionary* or *Ignore*. `F7` toggles it; click the language in the status bar to switch. Plain text and Markdown are checked at any size; log files only with **Settings > Spelling > Spell-check log files** (off by default).
 - **Toolbar** (off by default) with undo/redo, headings, bold/italic/strike/underline, copy/cut/paste, table, code block, checklist, lists, indent, font size, find, delete file.
 - **Insert image** (toolbar) — pick a picture and it's added as `![name](path)`, relative to the document when it has been saved (spaces become `%20`), otherwise as a full path. Local images show in the preview; editing in the preview keeps the path as written.
 - Code blocks in the preview have a hover copy button; `http(s)` links open in your browser.
@@ -140,7 +140,9 @@ cargo run
 ## Project layout
 
 - `ui/` — static frontend loaded into the native WebView (no build step):
-  - `renderer.js` — documents, tabs, layouts, editor colour layer, spelling, session, shortcuts
+  - `renderer.js` — documents, tabs, layouts, spelling, session, shortcuts (and the colour layer of the previous editor)
+  - `editor-codemirror.js` — the editor (CodeMirror 6): colours, find hits, bookmarks, spelling, links and the line-number margins, drawn for the lines in view
+  - `editor-facade.js` — lets the rest of the app use the editor as if it were a plain text box (and picks the editor)
   - `find.js` — bottom find bar, Advanced pane, bookmarks
   - `settings.js` — Settings dialog, word wrap / sidebar / menu bar / status bar
   - `table.js` — table editing in the preview
@@ -165,7 +167,7 @@ cargo run
 
 ## Known limitations
 
-- **Very large files.** notepad.md edits text in the browser's own text box (WebView2), which lays out the whole document after every change. Up to a few MB that is quick; measured on one PC (Intel Core Ultra 5, 32 GB), a key in a 10 MB log takes about 0.3 s to appear, and in a 25 MB log about 1 s. Files over 5 MB open in Edit Only without colours or spell checking. Over 4 MB, find matches and bookmarked lines are not highlighted in the text itself (Find Next still selects each match, and bookmarks still show beside the line numbers). Files over 100 MB are not opened.
+- **Very large files.** Typing, scrolling, Go to Line and switching tabs stay quick up to the 100 MB limit: the editor (CodeMirror 6) only lays out and draws the lines in view. Measured on one PC (Intel Core Ultra 5, 32 GB): a key appears in about 20 ms in a 25 MB log. Files over 5 MB open in Edit Only; colours cover files up to 16 MB; the preview of a document over 4 MB shows its first 4 MB, read-only, with a note (the editor has the whole file). A big file still takes a fair amount of memory: about 1.4 GB for a 10 MB log.
 - **Pictures from the web in a document are loaded when it is previewed** (as in a browser), so whoever hosts a picture can see that it was opened.
 - **Windows only** (10 and 11, 64-bit). The release `.exe` is not code-signed, so Windows SmartScreen may warn the first time it is run.
 
@@ -193,7 +195,7 @@ notepad.md is released under the [MIT licence](LICENSE). The bundled third-party
 - [smol-toml](https://github.com/squirrelchat/smol-toml) 1.9.1 (BSD-3-Clause) — TOML syntax checking
 - [acorn](https://github.com/acornjs/acorn) 8.19.0 (MIT) — JavaScript syntax checking
 - [DOMPurify](https://github.com/cure53/DOMPurify) 3.4.18 (Apache-2.0) — cleaning HTML in documents
-- [CodeMirror 6](https://codemirror.net) (MIT) with its Lezer, style-mod, w3c-keyname, crelt and find-cluster-break packages — the text editor (codemirror-prototype branch; `NOTEPADMD_EDITOR=textarea` switches back to the old one)
+- [CodeMirror 6](https://codemirror.net) (MIT) with its Lezer, style-mod, w3c-keyname, crelt and find-cluster-break packages — the text editor (setting the environment variable `NOTEPADMD_EDITOR=textarea` starts the previous, simpler editor instead)
 - en-GB / en-US Hunspell dictionaries from [SCOWL / wordlist.sourceforge.net](http://wordlist.sourceforge.net), via the `dictionary-en` and `dictionary-en-gb` packages (permissive SCOWL licence)
 
 ## Project status and support
