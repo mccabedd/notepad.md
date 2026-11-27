@@ -2214,12 +2214,18 @@ function syncFromPreview() {
   scheduleOutline();
 }
 
+/** For the editor's colour cache: is tab `id` still open, with exactly this text? */
+function npColourCacheValid(id, text) {
+  const d = docs.find((x) => x.id === id);
+  return !!d && d.content === text;
+}
+
 function loadActiveDocIntoPanes() {
   const doc = getActive();
   if (!doc) return;
   if (editor.isCodeMirror) {
     if (editor.api) editor.api.setLanguage(langInfo(doc).hljs || null, true); // before loading: coloured once
-    editor.loadText(doc.content); // its own document and undo history
+    editor.loadText(doc.content, doc.id); // its own document and undo history
   }
   else editor.value = doc.content;
   editor.placeholder = isProse(doc) ? 'Start typing...' : 'Start typing ' + langInfo(doc).label + '...';

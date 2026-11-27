@@ -54,6 +54,59 @@ if (facade && facade.isCodeMirror) {
   const SMALL = 300000; // coloured at once on the main thread; bigger files in the worker
   const refreshColours = StateEffect.define();
   let colourLang = null; // highlight.js language of this tab, or null
+
+  /* Colours of big tabs not in view, so switching back doesn't colour the whole file again.
+   * An entry is used only for exactly the text it was made for (the same string, compared in full
+   * when it isn't the very same one) and the same language; anything else is thrown away.
+   * Bounded by count and size; least recently used goes first. Entries for tabs that were closed
+   * or whose text changed meanwhile are dropped whenever a tab is loaded (npColourCacheValid). */
+  const COLOUR_CACHE_MAX = 3;
+  const COLOUR_CACHE_BYTES = 32 * 1024 * 1024;
+  const colourCache = new Map(); // tab key -> { text, lang, spans, bytes, promise }
+  let colourKey = null; // tab key of the text in the editor
+  let colourHit = null; // colours found for the text being loaded, taken by the new colourPlugin
+  const spanBytes = (s) => (s ? s.starts.byteLength + s.ends.byteLength + s.cls.byteLength + (s.pmax ? s.pmax.byteLength : 0) : 0);
+  function colourCacheTrim() {
+    let total = 0;
+    for (const e of colourCache.values()) total += e.bytes;
+    for (const [k, e] of colourCache) {
+      if (colourCache.size <= COLOUR_CACHE_MAX && total <= COLOUR_CACHE_BYTES) break;
+      colourCache.delete(k);
+      total -= e.bytes;
+    }
+  }
+  function colourCacheStore(key, text, lang, spans, promise) {
+    colourCache.delete(key);
+    const e = { text, lang, spans, bytes: spanBytes(spans), promise };
+    colourCache.set(key, e);
+    if (promise) {
+      // Still being coloured: keep the result when it comes, if this entry is still wanted.
+      promise.then((s) => {
+        if (colourCache.get(key) !== e) return;
+        if (!s) {
+          colourCache.delete(key);
+          return;
+        }
+        if (!s.pmax) addPmax(s);
+        e.spans = s;
+        e.bytes = spanBytes(s);
+        e.promise = null;
+        colourCacheTrim();
+      });
+    }
+    colourCacheTrim();
+  }
+  function colourCachePrune() {
+    for (const [k, e] of colourCache) {
+      if (typeof npColourCacheValid !== 'function' || !npColourCacheValid(k, e.text)) colourCache.delete(k);
+    }
+  }
+  function addPmax(s) {
+    const pmax = new Int32Array(s.ends.length);
+    let mx = 0;
+    for (let i = 0; i < s.ends.length; i++) pmax[i] = mx = Math.max(mx, s.ends[i]);
+    s.pmax = pmax;
+  }
   const markCache = new Map();
   const markFor = (name) => {
     let m = markCache.get(name);
@@ -69,7 +122,10 @@ if (facade && facade.isCodeMirror) {
         this.seq = 0;
         this.timer = 0;
         this.decorations = Decoration.none;
-        this.request(view, true);
+        const hit = colourHit;
+        colourHit = null;
+        if (hit && hit.lang === colourLang) this.setSpans(hit.spans, hit.lang, this.since);
+        else this.request(view, true);
         this.decorations = this.build(view);
       }
       update(u) {
@@ -79,7 +135,8 @@ if (facade && facade.isCodeMirror) {
           this.schedule(u.view);
         }
         const asked = u.transactions.some((tr) => tr.effects.some((e) => e.is(refreshColours)));
-        if (asked && !this.pending && this.spansLang !== colourLang) this.request(u.view, true);
+        // A new language: colour again (a request still out for the old language is replaced).
+        if (asked && (this.pending ? this.pending.lang !== colourLang : this.spansLang !== colourLang)) this.request(u.view, true);
         if (u.docChanged || u.viewportChanged || asked) this.decorations = this.build(u.view);
       }
       schedule(view) {
@@ -108,21 +165,22 @@ if (facade && facade.isCodeMirror) {
           }
         }
         const id = ++this.seq;
-        this.pending = { id, since: ChangeSet.empty(view.state.doc.length).desc };
-        npHighlightSpans(api ? api.text() : view.state.doc.toString(), lang).then((s) => {
+        const promise = npHighlightSpans(api ? api.text() : view.state.doc.toString(), lang);
+        this.pending = { id, since: ChangeSet.empty(view.state.doc.length).desc, promise, lang };
+        promise.then((s) => {
           if (!this.pending || this.pending.id !== id) return; // a newer request is on its way
+          if (s === undefined) {
+            // Replaced by a newer request before it ran: keep the colours we have.
+            this.pending = null;
+            return;
+          }
           this.setSpans(s, lang, this.pending.since);
           this.pending = null;
           view.dispatch({ effects: refreshColours.of(null) });
         });
       }
       setSpans(s, lang, since) {
-        if (s) {
-          const pmax = new Int32Array(s.ends.length);
-          let mx = 0;
-          for (let i = 0; i < s.ends.length; i++) pmax[i] = mx = Math.max(mx, s.ends[i]);
-          s.pmax = pmax;
-        }
+        if (s && !s.pmax) addPmax(s);
         this.spans = s;
         this.spansLang = lang;
         this.since = since;
@@ -465,9 +523,25 @@ if (facade && facade.isCodeMirror) {
       const back = direction === 'backward';
       view.dispatch({ selection: { anchor: back ? Math.max(s, e) : Math.min(s, e), head: back ? Math.min(s, e) : Math.max(s, e) }, annotations: appChange.of(true) });
     },
-    /** A different document: new state, fresh undo history. */
-    loadText(text) {
+    /** A different document: new state, fresh undo history. `key` names its tab (for the colour
+     *  cache: colours of the tab being left are kept, and reused if this text is one we coloured). */
+    loadText(text, key) {
+      const out = view.plugin(colourPlugin);
+      if (colourKey != null && out && view.state.doc.length >= SMALL) {
+        const p = out.pending;
+        if (p && p.since.empty && p.promise) colourCacheStore(colourKey, api.text(), p.lang, null, p.promise);
+        else if (!p && out.spans && out.since.empty) colourCacheStore(colourKey, api.text(), out.spansLang, out.spans, null);
+      }
+      colourKey = key == null ? null : key;
+      colourCachePrune();
+      colourHit = null;
+      const e = colourKey != null ? colourCache.get(colourKey) : null;
+      if (e) {
+        colourCache.delete(colourKey); // in use again: the live editor owns these colours now
+        if (e.spans && e.lang === colourLang && e.text === text) colourHit = { spans: e.spans, lang: e.lang };
+      }
       view.setState(EditorState.create({ doc: text, extensions: extensions() }));
+      colourHit = null;
       textCache = { doc: view.state.doc, text };
     },
     /** value = text: only the part that differs is replaced, as one undoable change. */
@@ -508,6 +582,18 @@ if (facade && facade.isCodeMirror) {
       if ((lang || null) === colourLang) return;
       colourLang = lang || null;
       if (!quiet) view.dispatch({ effects: refreshColours.of(null) }); // quiet: a new text is about to load
+    },
+    /** For tests and diagnostics: what the colour cache holds. */
+    colourCacheInfo() {
+      let bytes = 0;
+      for (const e of colourCache.values()) bytes += e.bytes;
+      return { keys: [...colourCache.keys()], bytes, pending: [...colourCache.values()].filter((e) => e.promise).length };
+    },
+    /** For tests: the colours of the text in view (current: made for exactly this text). */
+    colourState() {
+      const p = view.plugin(colourPlugin);
+      if (!p) return null;
+      return { lang: colourLang, spansLang: p.spansLang || null, ranges: p.spans ? p.spans.starts.length : 0, current: !!p.spans && p.since.empty, pending: !!p.pending };
     },
     /** The app's marks (find hits, bookmarks...) changed: draw them again. */
     refreshMarks() {

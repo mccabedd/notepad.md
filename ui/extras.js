@@ -314,15 +314,22 @@ function clearRecent() {
 
 /* ---------- Reopen Closed Tab ---------- */
 
+/* What a closed tab keeps (up to 25 tabs, oldest forgotten first, in memory only, as before):
+ * - a saved file with no unsaved changes: no text, only where it was, its settings and the file's
+ *   size and time at closing. Reopening reads the file again, and says so if it has changed or gone.
+ * - anything else (an untitled tab with text, unsaved changes, a file that has gone): the full text,
+ *   so nothing typed is lost. No size budget applies to these. */
 const closedTabs = [];
 
 function rememberClosedTab(doc) {
   if (!doc || (!doc.path && !doc.content)) return; // nothing worth bringing back
   if (doc.id === activeId) saveDocView(doc);
+  const onDisk = !!doc.path && !doc.dirty && !doc.missing && !doc.conflict;
   closedTabs.push({
     index: docs.indexOf(doc),
     path: doc.path,
-    content: doc.content,
+    content: onDisk ? null : doc.content, // null: read the file again on reopening
+    disk: onDisk && doc.disk ? { ...doc.disk } : null,
     dirty: doc.dirty,
     lang: doc.lang,
     langOverride: doc.langOverride,
@@ -360,14 +367,23 @@ async function reopenClosedTab() {
     customTitle: s.customTitle,
   };
   let doc;
+  let note = '';
   if (s.path) {
     let disk = null;
     try {
       disk = await invoke('cmd_read_file', { path: s.path });
     } catch (e) {
-      /* gone: bring the text back as unsaved */
+      /* gone: bring the text back as unsaved (when we kept it) */
     }
     const fromDisk = disk ? normalizeEol(disk.content) : null;
+    if (s.content === null) {
+      // A saved file: its text was not kept, so it can only come back from the disk.
+      if (!fromDisk) {
+        await dialogApi.message('"' + s.path + '" no longer exists or can\'t be read, so it can\'t be reopened.', { title: 'Reopen Closed Tab', kind: 'info' });
+        return;
+      }
+      if (s.disk && !sameStat(s.disk, disk)) note = 'This file has changed since its tab was closed: showing it as it is now.';
+    }
     if (s.dirty || !fromDisk) doc = makeDoc(s.path, s.content, { ...opts, savedContent: fromDisk ? fromDisk.text : null });
     else doc = makeDoc(s.path, fromDisk.text, { ...opts, encoding: disk.encoding, eol: fromDisk.eol });
     if (disk) setDiskStat(doc, disk);
@@ -387,7 +403,7 @@ async function reopenClosedTab() {
   loadActiveDocIntoPanes();
   scheduleFindRefresh(false);
   scheduleSessionSave();
-  flashFindStatus('Reopened "' + tabTitle(doc) + '"');
+  flashFindStatus(note ? 'Reopened "' + tabTitle(doc) + '". ' + note : 'Reopened "' + tabTitle(doc) + '"', note ? 6000 : undefined);
 }
 
 /* ---------- Save All ---------- */
@@ -1034,6 +1050,7 @@ async function colourLargeDoc(doc) {
   } catch (e) {
     html = null;
   }
+  if (html === HL_SUPERSEDED) return; // a newer request replaced this one
   if (id !== lazyReq || doc.id !== activeId || editor.value !== text || langInfo(doc).hljs !== info.hljs) return; // changed meanwhile
   if (html === null) html = highlightCode(text, info.hljs); // a language only the page knows (BBCode)
   if (/(^|\n)[ \t]/.test(text)) html = addIndentGuides(html);
@@ -1042,31 +1059,99 @@ async function colourLargeDoc(doc) {
   else showLargeOverlay(doc, text, info.hljs, html);
 }
 
+/* The colouring worker runs one job at a time; at most one more waits. Colouring is always for the
+ * tab in view, so a newer request replaces the waiting one ("latest wins"): its promise resolves
+ * to HL_SUPERSEDED and its text is let go. A request identical to the running or waiting job (same
+ * text, language and kind) shares that job's promise instead of colouring the text again.
+ * A running job can't be stopped part-way (the worker is busy until it finishes); its result is
+ * still delivered, and callers check it is for the text they have now. */
+const HL_SUPERSEDED = Object.freeze({ superseded: true });
 let hlWorker = null;
 let hlSeq = 0;
-const hlWaiters = new Map();
+let hlActive = null; // { id, text, lang, spans, promise, resolve, reject }
+let hlNext = null; // the same, waiting for the worker
+
+// Made outside highlightInWorker, so these long-lived handlers can never keep a request's text
+// alive through a shared closure scope (they once kept the first big file for the whole session).
+function hlStartWorker() {
+  const w = new Worker('highlight-worker.js');
+  w.onmessage = (e) => hlFinish(w, e.data.id, null, 'spans' in e.data ? e.data.spans : e.data.html);
+  w.onerror = (err) => {
+    if (err && err.preventDefault) err.preventDefault();
+    hlWorkerFailed(w, err);
+  };
+  w.onmessageerror = (err) => hlFinish(w, hlActive && hlActive.id, err || new Error('bad reply'));
+  return w;
+}
+
+function hlRun(job) {
+  hlActive = job;
+  if (!hlWorker) hlWorker = hlStartWorker();
+  try {
+    hlWorker.postMessage({ id: job.id, text: job.text, lang: job.lang, spans: job.spans });
+  } catch (err) {
+    hlFinish(hlWorker, job.id, err);
+  }
+}
+
+function hlFinish(w, id, err, result) {
+  if (w !== hlWorker || !hlActive || hlActive.id !== id) return; // an old worker, or not this job
+  const job = hlActive;
+  hlActive = null;
+  job.text = null;
+  if (err) job.reject(err);
+  else job.resolve(result);
+  if (hlNext) {
+    const next = hlNext;
+    hlNext = null;
+    hlRun(next);
+  }
+}
+
+/** The worker broke: every job fails (callers fall back), and the next request starts a new one. */
+function hlWorkerFailed(w, err) {
+  if (w !== hlWorker) return;
+  try {
+    w.terminate();
+  } catch (e) {
+    /* already gone */
+  }
+  hlWorker = null;
+  const jobs = [hlActive, hlNext].filter(Boolean);
+  hlActive = hlNext = null;
+  for (const j of jobs) {
+    j.text = null;
+    j.reject(err || new Error('colouring worker failed'));
+  }
+}
 
 function highlightInWorker(text, lang, asSpans) {
-  if (!hlWorker) {
-    hlWorker = new Worker('highlight-worker.js');
-    hlWorker.onmessage = (e) => {
-      const w = hlWaiters.get(e.data.id);
-      if (w) {
-        hlWaiters.delete(e.data.id);
-        w.resolve('spans' in e.data ? e.data.spans : e.data.html);
-      }
-    };
-    hlWorker.onerror = (err) => {
-      for (const w of hlWaiters.values()) w.reject(err);
-      hlWaiters.clear();
-      hlWorker = null;
-    };
+  const spans = !!asSpans;
+  const same = (j) => j && j.text === text && j.lang === lang && j.spans === spans;
+  if (same(hlActive)) {
+    // The text in view is the one being coloured: anything waiting is out of date.
+    if (hlNext) {
+      hlNext.text = null;
+      hlNext.resolve(HL_SUPERSEDED);
+      hlNext = null;
+    }
+    return hlActive.promise;
   }
-  const id = ++hlSeq;
-  return new Promise((resolve, reject) => {
-    hlWaiters.set(id, { resolve, reject });
-    hlWorker.postMessage({ id, text, lang, spans: !!asSpans });
+  if (same(hlNext)) return hlNext.promise;
+  const job = { id: ++hlSeq, text, lang, spans };
+  job.promise = new Promise((resolve, reject) => {
+    job.resolve = resolve;
+    job.reject = reject;
   });
+  if (!hlActive) hlRun(job);
+  else {
+    if (hlNext) {
+      hlNext.text = null;
+      hlNext.resolve(HL_SUPERSEDED);
+    }
+    hlNext = job;
+  }
+  return job.promise;
 }
 
 /**
@@ -1084,6 +1169,7 @@ function npHighlightSpansNow(text, lang) {
   }
 }
 
+/** undefined: the request was replaced by a newer one before it ran (nothing to apply). */
 async function npHighlightSpans(text, lang) {
   if (!lang) return null;
   let spans = null;
@@ -1092,6 +1178,7 @@ async function npHighlightSpans(text, lang) {
   } catch (e) {
     spans = null;
   }
+  if (spans === HL_SUPERSEDED) return undefined;
   if (spans === null && text.length <= HIGHLIGHT_MAX_CHARS) {
     try {
       spans = hlHtmlToSpans(highlightCode(text, lang));

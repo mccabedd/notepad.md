@@ -71,6 +71,52 @@ public static class KB {
 }
 "@
 
+if (-not ('TestMonitor' -as [type])) {
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class TestMonitor {
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct MONITORINFOEX { public int cb; public RECT rcMonitor, rcWork; public uint dwFlags; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szDevice; }
+    delegate bool MonProc(IntPtr m, IntPtr dc, IntPtr r, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, MonProc cb, IntPtr l);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool GetMonitorInfo(IntPtr m, ref MONITORINFOEX mi);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int ht, uint flags);
+    [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr ctx);
+    // Moves window h onto the work area of \\.\DISPLAY<n> (keeping its size where it fits).
+    public static string Move(IntPtr h, int n) {
+        IntPtr old = SetThreadDpiAwarenessContext(new IntPtr(-4)); // per-monitor v2: real pixels
+        try {
+            string want = @"\\.\DISPLAY" + n;
+            RECT work = new RECT(); bool found = false;
+            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (m, dc, r, l) => {
+                var mi = new MONITORINFOEX(); mi.cb = Marshal.SizeOf(typeof(MONITORINFOEX));
+                if (GetMonitorInfo(m, ref mi) && string.Equals(mi.szDevice, want, StringComparison.OrdinalIgnoreCase)) { work = mi.rcWork; found = true; return false; }
+                return true;
+            }, IntPtr.Zero);
+            if (!found) return "no monitor " + want;
+            RECT w; GetWindowRect(h, out w);
+            int ww = Math.Min(w.R - w.L, work.R - work.L - 40), wh = Math.Min(w.B - w.T, work.B - work.T - 40);
+            SetWindowPos(h, IntPtr.Zero, work.L + 20, work.T + 20, ww, wh, 0x0014); // NOZORDER | NOACTIVATE
+            return "moved to " + want;
+        } finally { SetThreadDpiAwarenessContext(old); }
+    }
+}
+"@
+}
+# Opt-in: NOTEPADMD_TEST_MONITOR=<n> puts the test window on \\.\DISPLAY<n> once it is open.
+function Move-AppToTestMonitor {
+    $n = 0
+    if (-not $script:proc -or -not [int]::TryParse("$env:NOTEPADMD_TEST_MONITOR", [ref]$n) -or $n -lt 1) { return }
+    for ($i = 0; $i -lt 20; $i++) {
+        $h = [KB]::MainWin([uint32]$script:proc.Id)
+        if ($h -ne [IntPtr]::Zero) { [void][TestMonitor]::Move($h, $n); return }
+        Start-Sleep -Milliseconds 250
+    }
+}
+
 $script:ws = $null
 $script:msgId = 0
 
@@ -99,6 +145,8 @@ function Start-App([string]$exe, [string]$file, [int]$port = 9333, [switch]$Keep
     $script:ws.ConnectAsync([Uri]$wsUrl, [Threading.CancellationToken]::None).Wait()
     # wait for the app's init to finish
     for ($i = 0; $i -lt 60; $i++) { if ((Eval "typeof statusLayout !== 'undefined' && !!statusLayout.textContent && typeof docs !== 'undefined' && docs.length > 0 && !!activeId") -eq $true) { break }; Start-Sleep -Milliseconds 250 }
+    # A kept session restores the window's own position (tests check it): leave that one alone.
+    if (-not $KeepSession) { Move-AppToTestMonitor }
 }
 
 function Cdp([string]$method, $params) {

@@ -180,9 +180,10 @@ const NP_EDITOR_MODE = (() => {
       return host.dispatchEvent(ev);
     },
 
-    /** Loads another document's text: a fresh undo history, caret at the start. */
-    loadText(text) {
-      if (api) api.loadText(String(text || ''));
+    /** Loads another document's text: a fresh undo history, caret at the start. `key`: its tab
+     *  (lets the editor reuse that tab's colours when the text hasn't changed). */
+    loadText(text, key) {
+      if (api) api.loadText(String(text || ''), key);
       else pending = { ...pending, text: String(text || ''), sel: [0, 0] };
     },
     /** Types text at the selection, as the user would (on the undo stack, fires 'input'). */
