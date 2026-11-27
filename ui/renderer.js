@@ -1948,8 +1948,9 @@ function contextMenuContains(target) {
   return ctxMenu.contains(target) || (subMenuEl && subMenuEl.contains(target));
 }
 
-async function showSpellMenu(x, y, word, replace) {
+async function showSpellMenu(x, y, word, replace, extra) {
   const tail = ['sep', { label: 'Add "' + word + '" to dictionary', icon: '+', action: () => addUserWord(word) }, { label: 'Ignore', icon: '∅', action: () => ignoreWord(word) }];
+  if (extra && extra.length) tail.push('sep', ...extra);
   showContextMenu(x, y, [{ label: 'Looking up suggestions...', disabled: true }, ...tail]);
   const list = await requestSuggestions(word);
   if (ctxMenu.classList.contains('hidden')) return;
@@ -3682,7 +3683,9 @@ function wireDomEvents() {
     if (!span) return;
     e.preventDefault();
     const word = span.dataset.w;
-    showSpellMenu(e.clientX, e.clientY, word, (s) => replaceEditorRange(start, start + word.length, s));
+    // Words in another language are marked as misspelt, so Translate is offered here too.
+    const extra = typeof translateMenuItems === 'function' ? translateMenuItems() : [];
+    showSpellMenu(e.clientX, e.clientY, word, (s) => replaceEditorRange(start, start + word.length, s), extra);
   });
   preview.addEventListener('scroll', () => {
     if (lineNumbersVisible) lineNumbersPreviewEl.scrollTop = preview.scrollTop;

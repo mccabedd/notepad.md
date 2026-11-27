@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS = {
   caretColor: '', // '' = follow the theme
   selectionColor: '', // '' = follow the theme (shown see-through, so the text stays readable)
   translateTo: 'en', // right-click > Translate > "Translate to ..." (Google language code)
+  translateProvider: 'free', // 'free' (Google Translate, no key) or 'cloud' (Google Cloud Translation with the user's key)
   previewFont: 'Segoe UI',
   previewStyle: 'normal',
   previewColor: '',
@@ -49,6 +50,7 @@ const DEFAULT_SETTINGS = {
 };
 
 let settings = { ...DEFAULT_SETTINGS };
+let translateProviderUnset = true; // no Translate provider chosen yet (see translate.js)
 let appliedMenuBar = null;
 let menuPeek = false; // the menu bar is switched off but shown for now (Alt), until a command is picked
 
@@ -78,6 +80,9 @@ function loadSettings(saved) {
   if (!['Green', 'Orange', 'Red'].includes(settings.bookmarkColour)) settings.bookmarkColour = 'Green';
   if (!['line', 'block', 'underscore'].includes(settings.caretStyle)) settings.caretStyle = 'line';
   if (!/^[a-zA-Z]{2,3}(-[A-Za-z]{2,4})?$/.test(settings.translateTo)) settings.translateTo = 'en';
+  if (!['free', 'cloud'].includes(settings.translateProvider)) settings.translateProvider = 'free';
+  // v2.0.2 had only the Cloud provider: someone who saved a key then keeps using it (translate.js).
+  translateProviderUnset = !(saved && typeof saved === 'object' && typeof saved.translateProvider === 'string');
   if (!['markdown', 'plaintext'].includes(settings.newTabFormat)) settings.newTabFormat = 'markdown';
   if (!['general', 'filetypes', 'validation'].includes(settings.settingsTab)) settings.settingsTab = 'general';
   settings.validateDelay = Math.min(5000, Math.max(200, Math.round(settings.validateDelay)));
@@ -729,6 +734,7 @@ function onSettingInput(e) {
     if (key === 'validateDelay') v = Math.min(5000, Math.max(200, v));
   } else if (key === 'tabSize') v = parseInt(el.value, 10);
   else v = el.value;
+  if (key === 'translateProvider') translateProviderUnset = false;
   if (LIVE_SETTINGS[key]) {
     LIVE_SETTINGS[key].set(v);
     scheduleSessionSave();

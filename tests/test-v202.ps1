@@ -23,6 +23,32 @@ $job = Start-Job -ArgumentList $port, $fakeLog -ScriptBlock {
         if (-not $t.IsCompleted) { break }
         $c = $t.Result
         $body = (New-Object IO.StreamReader($c.Request.InputStream, [Text.Encoding]::UTF8)).ReadToEnd()
+        if ($c.Request.Url.AbsolutePath -eq '/translate_a/single') {
+            # The free endpoint: q=<text> (form), tl=<target>; reply [[["translated","original",...],...],null,"detected"]
+            $tl = $c.Request.QueryString['tl']
+            $q = ''
+            foreach ($pair in $body.Split('&')) { if ($pair.StartsWith('q=')) { $q = [Uri]::UnescapeDataString($pair.Substring(2).Replace('+', ' ')) } }
+            $lines = $q.Split("`n")
+            Add-Content $log ("free tl=$tl n=$($lines.Count) len=$($q.Length) key=$($c.Request.Headers['X-goog-api-key']) client=$($c.Request.QueryString['client'])")
+            if ($q -like '*LIMITME*') { $code = 429; $out = '<html>Too Many Requests</html>' }
+            else {
+                $code = 200
+                $segs = @()
+                for ($i = 0; $i -lt $lines.Count; $i++) {
+                    $tr = "[$tl] " + $lines[$i]
+                    # MERGEME: Google joins two lines into one, so the line count doesn't match.
+                    if ($i -lt $lines.Count - 1 -and $q -notlike '*MERGEME*') { $tr += "`n" } elseif ($i -lt $lines.Count - 1) { $tr += ' ' }
+                    $segs += '[' + (ConvertTo-Json $tr -Compress) + ',' + (ConvertTo-Json $lines[$i] -Compress) + ',null,null,3]'
+                }
+                $out = '[[' + ($segs -join ',') + '],null,"is"]'
+            }
+            $bytes = [Text.Encoding]::UTF8.GetBytes($out)
+            $c.Response.StatusCode = $code
+            $c.Response.ContentType = 'application/json; charset=utf-8'
+            $c.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+            $c.Response.Close()
+            continue
+        }
         $key = $c.Request.Headers['X-goog-api-key']
         $req = $body | ConvertFrom-Json
         $q = @($req.q)
@@ -42,7 +68,7 @@ $job = Start-Job -ArgumentList $port, $fakeLog -ScriptBlock {
     }
     $l.Stop()
 }
-$env:NOTEPADMD_TRANSLATE_URL = "http://127.0.0.1:$port/language/translate/v2"
+$env:NOTEPADMD_TRANSLATE_URL = "http://127.0.0.1:$port"
 
 try {
 Start-App $Exe $null
@@ -84,9 +110,28 @@ if ($cm) {
 $r = J "return [...document.querySelectorAll('[data-s=caretStyle] option')].map((o) => o.textContent).join(',')"
 T 'Settings > Editor offers Line, Block and Underscore' $r ($r -eq 'Line,Block,Underscore')
 
-# ---------- Translate ----------
-$r = J "await invoke('cmd_translate_key_set', { key: '' }); window.__msgs = []; addDocAndActivate(newUntitledDoc()); setLayoutMode('edit-only'); editor.value = 'Bonjour'; syncFromEditor(); const res = await translateInEditor('en'); return res + '|' + (window.__msgs[0] || '').includes('Settings > Translate') + '|' + editor.value"
-T 'Without a key: a message pointing to Settings > Translate, text unchanged' $r ($r -eq 'no key|true|Bonjour')
+# ---------- Translate: the free provider (the default) ----------
+$r = J "await invoke('cmd_translate_key_set', { key: '' }); window.__msgs = []; addDocAndActivate(newUntitledDoc()); setLayoutMode('edit-only'); editor.value = 'Bonjour'; syncFromEditor(); editor.setSelectionRange(0, 0); const p = settings.translateProvider; const res = await translateInEditor('en'); return [p, res.startsWith('Translated from Icelandic into English'), editor.value, window.__msgs.length].join('|')"
+T 'Free provider is the default and needs no key' $r ($r -eq 'free|true|[en] Bonjour|0')
+$r = J "editor.value = '# Titre\n\n  - un\n\tdeux  \n\nfin'; syncFromEditor(); editor.setSelectionRange(0, 0); await translateInEditor('de'); return JSON.stringify(editor.value)"
+T 'Free: whole document in one request, keeping blank lines and indentation' $r ($r -eq '"[de] # Titre\n\n  [de] - un\n\t[de] deux  \n\n[de] fin"')
+$r = J "editor.value = 'MERGEME one\ntwo\nthree'; syncFromEditor(); editor.setSelectionRange(0, 0); await translateInEditor('en'); return JSON.stringify(editor.value)"
+T 'Free: when Google merges lines, each line is sent on its own' $r ($r -eq '"[en] MERGEME one\n[en] two\n[en] three"')
+$r = J "window.__msgs = []; editor.value = 'LIMITME'; syncFromEditor(); editor.setSelectionRange(0, 0); const res = await translateInEditor('en'); return [res, editor.value, (window.__msgs[0] || '').includes('limiting requests')].join('|')"
+T 'Free: Google limiting requests is explained, text unchanged' $r ($r -eq 'error|LIMITME|true')
+$r = J "window.__asks = []; const big = ('mot ').repeat(8000); editor.value = big; syncFromEditor(); editor.setSelectionRange(0, 0); await translateInEditor('en'); return [window.__asks.length, editor.value.split('[en] ').length - 1 >= 1, editor.value.replace(/\[en\] /g, '') === big].join('|')"
+T 'Free: a large document is not asked about (no charge) and comes back whole' $r ($r -eq '0|true|true')
+$freeLog = @(Get-Content $fakeLog | Where-Object { $_ -like 'free *' })
+$freeBad = @($freeLog | Where-Object { $_ -notmatch 'client=gtx' -or $_ -notmatch 'key= ' -or [int]([regex]::Match($_, 'len=(\d+)').Groups[1].Value) -gt 4600 })
+T 'Free requests: client=gtx, no key sent, none over 4,500 characters' "$($freeLog.Count) requests, $($freeBad.Count) bad" ($freeLog.Count -ge 9 -and $freeBad.Count -eq 0)
+
+# ---------- Translate from the spelling menu (right-click on a misspelt word) ----------
+$r = J "setSpellLang('en_GB'); editor.value = 'Hello Þetta er próf'; syncFromEditor(); for (let i = 0; i < 150 && !edLayer().querySelector('.spell-err'); i++) await new Promise((r) => setTimeout(r, 100)); const sp = [...edLayer().querySelectorAll('.spell-err')].find((s) => s.dataset.w === 'Þetta'); if (!sp) return 'no spelling mark'; editor.setSelectionRange(6, 19); const rc = sp.getClientRects()[0]; const target = editor.isCodeMirror ? sp : editor; target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rc.left + 2, clientY: rc.top + rc.height / 2 })); await new Promise((r) => setTimeout(r, 300)); const items = [...ctxMenu.querySelectorAll('.ctx-label')].map((e) => e.textContent); const tr = [...ctxMenu.querySelectorAll('button')].find((b) => b.textContent.includes('Translate')); if (!tr) return 'no Translate: ' + items.join(','); tr.dispatchEvent(new MouseEvent('mouseenter')); await new Promise((r) => setTimeout(r, 100)); const subs = subMenuEl ? [...subMenuEl.querySelectorAll('.ctx-label')].map((e) => e.textContent) : []; const go = subMenuEl && [...subMenuEl.querySelectorAll('button')].find((b) => b.textContent.startsWith('Translate to')); go.click(); for (let i = 0; i < 50 && !editor.value.includes('[en]'); i++) await new Promise((r) => setTimeout(r, 100)); return [items.includes('Ignore'), subs.join(','), editor.value, ctxMenu.classList.contains('hidden')].join('|')"
+T 'Spelling menu has Translate (to English / Choose Language), and it translates the selection' $r ($r -eq 'true|Translate to English,Choose Language...|Hello [en] Þetta er próf|true')
+
+# ---------- Translate: Google Cloud with a key ----------
+$r = J "changeSetting('translateProvider', 'cloud'); window.__msgs = []; editor.value = 'Bonjour'; syncFromEditor(); editor.setSelectionRange(0, 0); const res = await translateInEditor('en'); return res + '|' + (window.__msgs[0] || '').includes('Settings > Translate') + '|' + editor.value"
+T 'Cloud without a key: a message pointing to Settings > Translate, text unchanged' $r ($r -eq 'no key|true|Bonjour')
 $r = J "try { await invoke('cmd_translate_key_set', { key: 'bad key with spaces' }); return 'accepted'; } catch (e) { return 'refused' }"
 T 'A key with spaces is refused' $r ($r -eq 'refused')
 $r = J "await invoke('cmd_translate_key_set', { key: 'test-key-123' }); return String(await invoke('cmd_translate_key_status'))"
@@ -113,13 +158,15 @@ $r = J "const long = 'Une phrase assez longue pour le test. '.repeat(400); edito
 T 'A very long line is sent in pieces and put back together' $r ($r -eq 'true|true')
 $r = J "window.__asks = []; window.__askAnswer = false; const big = ('mot ').repeat(8000); editor.value = big; syncFromEditor(); editor.setSelectionRange(0, 0); const res = await translateInEditor('en'); window.__askAnswer = true; return [res, window.__asks.length, editor.value === big].join('|')"
 T 'A large document asks first (No leaves it alone)' $r ($r -eq 'cancelled|1|true')
-$fake = Get-Content $fakeLog
+$fake = @(Get-Content $fakeLog | Where-Object { $_ -notlike 'free *' })
 $bad = @($fake | Where-Object { $_ -notmatch 'format=text' -or [int]([regex]::Match($_, 'max=(\d+)').Groups[1].Value) -gt 4500 })
 T 'Every request: format=text, no piece over 4,500 characters, key in the header' "$($fake.Count) requests, $($bad.Count) bad" ($fake.Count -ge 7 -and $bad.Count -eq 0 -and ($fake | Where-Object { $_ -match '^key=test-key-123' }).Count -ge 6)
 $r = J "await invoke('cmd_translate_key_set', { key: '' }); return String(await invoke('cmd_translate_key_status'))"
 T 'Remove key' $r ($r -eq 'false')
-$r = J "openSettings(); showSettingsTab('general'); const s = document.getElementById('translate-to'); const ok = s.options.length > 100 && s.value === 'en'; const st = document.getElementById('translate-key-status').textContent; closeSettings(); return ok + '|' + st"
-T 'Settings > Translate: language list (English by default) and key status' $r ($r -eq 'true|No key saved yet.')
+$r = J "openSettings(); showSettingsTab('general'); await new Promise((r) => setTimeout(r, 300)); const s = document.getElementById('translate-to'); const ok = s.options.length > 100 && s.value === 'en'; const st = document.getElementById('translate-key-status').textContent; const vis = (id) => !document.getElementById(id).classList.contains('hidden'); const a = [document.getElementById('translate-provider').value, vis('translate-cloud'), vis('translate-free-note')]; const p = document.getElementById('translate-provider'); p.value = 'free'; p.dispatchEvent(new Event('change', { bubbles: true })); await new Promise((r) => setTimeout(r, 100)); const b = [settings.translateProvider, vis('translate-cloud'), vis('translate-free-note')]; closeSettings(); return [ok, st, ...a, ...b].join('|')"
+T 'Settings > Translate: languages, key status, provider choice shows the key fields only for Cloud' $r ($r -eq 'true|No key saved yet.|cloud|true|false|free|false|true')
+$r = J "translateProviderUnset = true; settings.translateProvider = 'free'; await invoke('cmd_translate_key_set', { key: 'test-key-123' }); const hasKey = await translateKeySaved(); const p = translateProvider(hasKey); await invoke('cmd_translate_key_set', { key: '' }); changeSetting('translateProvider', 'free'); return p"
+T 'Someone who saved a Cloud key in v2.0.2 keeps using Cloud' $r ($r -eq 'cloud')
 } finally {
     Stop-App
     Stop-Job $job -ErrorAction SilentlyContinue

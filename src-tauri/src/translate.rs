@@ -1,5 +1,8 @@
-//! Translate (right-click in the editor > Translate): Google Cloud Translation API (v2) with the
-//! user's own API key.
+//! Translate (right-click in the editor > Translate), by one of two providers:
+//! - "free": Google Translate's free web endpoint (translate.googleapis.com/translate_a/single,
+//!   client=gtx), the one Google's own web tools use. No key and no cost, but unofficial: Google
+//!   may limit or change it at any time.
+//! - "cloud": Google Cloud Translation API (v2) with the user's own API key.
 //!
 //! - The key is kept encrypted for the current Windows user (DPAPI) in the app's data folder; the
 //!   page can save or remove it but never read it back.
@@ -18,11 +21,16 @@ use tauri::Manager;
 use windows::Win32::Foundation::{LocalFree, HLOCAL};
 use windows::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
 
-const API: &str = "https://translation.googleapis.com/language/translate/v2";
+const API_HOST: &str = "https://translation.googleapis.com";
+const API_PATH: &str = "/language/translate/v2";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const SEG_MAX: usize = 4500;
 const BATCH_SEGS: usize = 100;
 const BATCH_CHARS: usize = 25_000;
+const FREE_HOST: &str = "https://translate.googleapis.com";
+const FREE_PATH: &str = "/translate_a/single?client=gtx&sl=auto&dt=t&tl=";
+/// The free endpoint takes one text per request: lines are joined with line breaks, up to this many characters.
+const FREE_BATCH_CHARS: usize = 4500;
 
 fn data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = match std::env::var_os("NOTEPADMD_DATA_DIR") {
@@ -207,36 +215,18 @@ fn config_quote(s: &str) -> String {
     q
 }
 
-/// Tests point this at a fake server on this PC (NOTEPADMD_TRANSLATE_URL=http://127.0.0.1:<port>/...).
-/// Nothing else is accepted there, so the variable can't send the key anywhere else.
-fn endpoint() -> (String, &'static str) {
+/// `host` + `path`. Tests point the host at a fake server on this PC
+/// (NOTEPADMD_TRANSLATE_URL=http://127.0.0.1:<port>). Nothing else is accepted there, so the
+/// variable can't send the key or the text anywhere else.
+fn endpoint(host: &str, path: &str) -> (String, &'static str) {
     match std::env::var("NOTEPADMD_TRANSLATE_URL") {
-        Ok(u) if u.starts_with("http://127.0.0.1:") => (u, "=http"),
-        _ => (API.to_string(), "=https"),
+        Ok(u) if u.starts_with("http://127.0.0.1:") && !u[17..].contains(['/', '@', '?', '#']) => (format!("{}{}", u, path), "=http"),
+        _ => (format!("{}{}", host, path), "=https"),
     }
 }
 
-fn google_error(body: &serde_json::Value, status: u16) -> String {
-    let msg = body["error"]["message"].as_str().unwrap_or("").trim().to_string();
-    let base = match status {
-        400 if msg.to_ascii_lowercase().contains("api key") => "Google didn't accept the API key",
-        400 => "Google couldn't translate this",
-        401 | 403 => "Google refused the request (is the Cloud Translation API enabled, with billing, for this key?)",
-        429 => "Google's limit for this key has been reached; try again later",
-        _ => "Google Translate didn't work",
-    };
-    if msg.is_empty() { format!("{} (HTTP {}).", base, status) } else { format!("{}: {}", base, msg) }
-}
-
-fn request(key: &str, cores: &[&str], target: &str) -> Result<(Vec<String>, Option<String>), String> {
-    let body = serde_json::json!({ "q": cores, "target": target, "format": "text" }).to_string();
-    let (url, proto) = endpoint();
-    let config = format!(
-        "url = {}\nrequest = \"POST\"\nheader = \"Content-Type: application/json; charset=utf-8\"\nheader = {}\ndata-binary = {}\n",
-        config_quote(&url),
-        config_quote(&format!("X-goog-api-key: {}", key)),
-        config_quote(&body)
-    );
+/// Runs curl.exe with `config` on stdin; returns (body, HTTP status).
+fn curl(config: &str, proto: &str) -> Result<(String, u16), String> {
     let mut child = Command::new("curl.exe")
         .args(["-sS", "--proto", proto, "--max-time", "120", "-K", "-", "-w", "\n%{http_code}"])
         .stdin(Stdio::piped())
@@ -255,9 +245,33 @@ fn request(key: &str, cores: &[&str], target: &str) -> Result<(Vec<String>, Opti
         return Err(if msg.is_empty() { "Could not reach Google Translate.".into() } else { format!("Could not reach Google Translate: {}", msg) });
     }
     let text = String::from_utf8_lossy(&out.stdout);
-    let (json, code) = text.rsplit_once('\n').unwrap_or(("", &text));
-    let status: u16 = code.trim().parse().unwrap_or(0);
-    let v: serde_json::Value = serde_json::from_str(json).unwrap_or(serde_json::Value::Null);
+    let (body, code) = text.rsplit_once('\n').unwrap_or(("", &text));
+    Ok((body.to_string(), code.trim().parse().unwrap_or(0)))
+}
+
+fn google_error(body: &serde_json::Value, status: u16) -> String {
+    let msg = body["error"]["message"].as_str().unwrap_or("").trim().to_string();
+    let base = match status {
+        400 if msg.to_ascii_lowercase().contains("api key") => "Google didn't accept the API key",
+        400 => "Google couldn't translate this",
+        401 | 403 => "Google refused the request (is the Cloud Translation API enabled, with billing, for this key?)",
+        429 => "Google's limit for this key has been reached; try again later",
+        _ => "Google Translate didn't work",
+    };
+    if msg.is_empty() { format!("{} (HTTP {}).", base, status) } else { format!("{}: {}", base, msg) }
+}
+
+fn request(key: &str, cores: &[&str], target: &str) -> Result<(Vec<String>, Option<String>), String> {
+    let body = serde_json::json!({ "q": cores, "target": target, "format": "text" }).to_string();
+    let (url, proto) = endpoint(API_HOST, API_PATH);
+    let config = format!(
+        "url = {}\nrequest = \"POST\"\nheader = \"Content-Type: application/json; charset=utf-8\"\nheader = {}\ndata-binary = {}\n",
+        config_quote(&url),
+        config_quote(&format!("X-goog-api-key: {}", key)),
+        config_quote(&body)
+    );
+    let (json, status) = curl(&config, proto)?;
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap_or(serde_json::Value::Null);
     if status != 200 {
         return Err(google_error(&v, status));
     }
@@ -270,6 +284,66 @@ fn request(key: &str, cores: &[&str], target: &str) -> Result<(Vec<String>, Opti
     Ok((texts, detected))
 }
 
+/* ---------------- the free endpoint ---------------- */
+
+/// Reads the free endpoint's reply: [[["translated", "original", ...], ...], null, "detected", ...].
+fn parse_free(json: &str) -> Option<(String, Option<String>)> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let mut out = String::new();
+    for seg in v.get(0)?.as_array()? {
+        if let Some(t) = seg.get(0).and_then(|t| t.as_str()) {
+            out.push_str(t);
+        }
+    }
+    Some((out, v.get(2).and_then(|d| d.as_str()).map(String::from)))
+}
+
+fn free_one(text: &str, target: &str) -> Result<(String, Option<String>), String> {
+    let (url, proto) = endpoint(FREE_HOST, &format!("{}{}", FREE_PATH, target));
+    let config = format!("url = {}\nrequest = \"POST\"\ndata-urlencode = {}\n", config_quote(&url), config_quote(&format!("q={}", text)));
+    let (body, status) = curl(&config, proto)?;
+    match status {
+        200 => parse_free(&body).ok_or_else(|| "Google Translate sent an unexpected reply.".to_string()),
+        429 | 503 => Err("Google Translate (free) is limiting requests from this PC just now. Try again later, or use your own Google Cloud key (Settings > Translate).".into()),
+        _ => Err(format!("Google Translate (free) didn't work (HTTP {}).", status)),
+    }
+}
+
+/// Lines go together in one request, one per line; if the reply doesn't have the same number of
+/// lines (Google merged or split some), each line of that group is sent on its own instead.
+fn request_free(cores: &[&str], target: &str) -> Result<(Vec<String>, Option<String>, usize), String> {
+    let (joined, detected) = free_one(&cores.join("\n"), target)?;
+    let lines: Vec<String> = joined.split('\n').map(|l| l.trim().to_string()).collect();
+    if lines.len() == cores.len() {
+        return Ok((lines, detected, 1));
+    }
+    let mut out = Vec::with_capacity(cores.len());
+    for c in cores {
+        out.push(free_one(c, target)?.0.trim().to_string());
+    }
+    Ok((out, detected, 1 + cores.len()))
+}
+
+/// Groups for the free endpoint: whole lines, up to FREE_BATCH_CHARS characters (and BATCH_SEGS lines).
+fn free_batches(cores: &[&str]) -> Vec<std::ops::Range<usize>> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut chars = 0;
+    for (i, c) in cores.iter().enumerate() {
+        let n = c.chars().count() + 1;
+        if i > start && (i - start >= BATCH_SEGS || chars + n > FREE_BATCH_CHARS) {
+            out.push(start..i);
+            start = i;
+            chars = 0;
+        }
+        chars += n;
+    }
+    if start < cores.len() {
+        out.push(start..cores.len());
+    }
+    out
+}
+
 #[derive(serde::Serialize)]
 pub struct Translated {
     text: String,
@@ -278,14 +352,16 @@ pub struct Translated {
     requests: usize,
 }
 
-/// Translates `text` into `target` (a language code such as "en" or "is").
+/// Translates `text` into `target` (a language code such as "en" or "is"), with `provider`
+/// "free" (Google Translate's free web endpoint) or "cloud" (Google Cloud with the saved key).
 #[tauri::command]
-pub async fn cmd_translate(app: tauri::AppHandle, text: String, target: String) -> Result<Translated, String> {
+pub async fn cmd_translate(app: tauri::AppHandle, text: String, target: String, provider: Option<String>) -> Result<Translated, String> {
     let target_ok = (2..=8).contains(&target.len()) && target.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
     if !target_ok {
         return Err("Unknown language.".into());
     }
-    let key = load_key(&app).ok_or("No Google Cloud API key is saved: add one in Settings > Translate.")?;
+    let free = provider.as_deref() == Some("free");
+    let key = if free { String::new() } else { load_key(&app).ok_or("No Google Cloud API key is saved: add one in Settings > Translate.")? };
     let pieces = split_text(&text);
     let cores: Vec<&str> = pieces.iter().filter(|p| !p.core.is_empty()).map(|p| p.core.as_str()).collect();
     let chars = cores.iter().map(|c| c.chars().count()).sum();
@@ -294,15 +370,23 @@ pub async fn cmd_translate(app: tauri::AppHandle, text: String, target: String) 
     }
     let mut translated = Vec::with_capacity(cores.len());
     let mut detected = None;
-    let groups = batches(&cores);
+    let mut requests = 0;
+    let groups = if free { free_batches(&cores) } else { batches(&cores) };
     for g in &groups {
-        let (t, d) = request(&key, &cores[g.clone()], &target)?;
+        let (t, d) = if free {
+            let (t, d, n) = request_free(&cores[g.clone()], &target)?;
+            requests += n;
+            (t, d)
+        } else {
+            requests += 1;
+            request(&key, &cores[g.clone()], &target)?
+        };
         translated.extend(t);
         if detected.is_none() {
             detected = d;
         }
     }
-    Ok(Translated { text: join_text(&pieces, &translated), detected, chars, requests: groups.len() })
+    Ok(Translated { text: join_text(&pieces, &translated), detected, chars, requests })
 }
 
 #[cfg(test)]
@@ -362,6 +446,25 @@ mod tests {
     fn config_values_are_escaped() {
         assert_eq!(config_quote(r#"a"b\c"#), r#""a\"b\\c""#);
         assert_eq!(config_quote("x\ny"), "\"x\\ny\"");
+    }
+
+    #[test]
+    fn free_replies_are_read() {
+        let r = r#"[[["Hello world. ","Hallo heimur. ",null,null,3],["This is a test.\n","Thetta er prof.\n",null,null,3],["Line two.","Lina tvo.",null,null,3]],null,"is",null]"#;
+        let (t, d) = parse_free(r).unwrap();
+        assert_eq!(t, "Hello world. This is a test.\nLine two.");
+        assert_eq!(d.as_deref(), Some("is"));
+        assert!(parse_free("not json").is_none());
+    }
+
+    #[test]
+    fn free_batches_keep_whole_lines_under_the_limit() {
+        let line = "z".repeat(1000);
+        let cores: Vec<&str> = vec![line.as_str(); 12];
+        let b = free_batches(&cores);
+        assert!(b.len() >= 3);
+        assert!(b.iter().all(|r| r.len() * 1001 <= FREE_BATCH_CHARS));
+        assert_eq!(b.iter().map(|r| r.len()).sum::<usize>(), 12);
     }
 
     #[test]

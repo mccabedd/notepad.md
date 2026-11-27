@@ -1,8 +1,9 @@
 /* Translate: right-click in the editor > Translate > "Translate to <default>" or "Choose Language...".
  * The selection is translated, or the whole document when nothing is selected, and replaced in
- * place as one change (Ctrl+Z undoes it). The work is done by Google Cloud Translation with the
- * user's own API key, in Rust (src-tauri/src/translate.rs), which also keeps the key: this page
- * can save or remove it, never read it. Loaded before renderer.js; uses its globals in functions. */
+ * place as one change (Ctrl+Z undoes it). The work is done in Rust (src-tauri/src/translate.rs) by
+ * Google Translate's free endpoint or by Google Cloud Translation with the user's own API key, which
+ * Rust also keeps: this page can save or remove it, never read it. The same items are in the
+ * spelling menu (right-click on a misspelt word). Loaded before renderer.js; uses its globals in functions. */
 
 // Languages Google Cloud Translation offers (code: name), as listed in its documentation.
 const TRANSLATE_LANGS = {
@@ -47,14 +48,13 @@ async function translateInEditor(target) {
   const doc = getActive();
   if (!doc || translateBusy) return 'busy';
   if (!target || !TRANSLATE_LANGS[target]) target = settings.translateTo || 'en';
-  let hasKey = false;
-  try {
-    hasKey = await invoke('cmd_translate_key_status');
-  } catch (e) {
-    hasKey = false;
-  }
-  if (!hasKey) {
-    await dialogApi.message('To translate, add your Google Cloud Translation API key in Settings > Translate.', { title: 'Translate', kind: 'info' });
+  const hasKey = await translateKeySaved();
+  const provider = translateProvider(hasKey);
+  if (provider === 'cloud' && !hasKey) {
+    await dialogApi.message(
+      'To translate with Google Cloud Translation, add your API key in Settings > Translate, or choose Google Translate (free, no key) there.',
+      { title: 'Translate', kind: 'info' }
+    );
     return 'no key';
   }
   const all = editor.value;
@@ -71,7 +71,7 @@ async function translateInEditor(target) {
     return 'empty';
   }
   const chars = text.replace(/\s+/g, '').length;
-  if (chars > TRANSLATE_CONFIRM_CHARS) {
+  if (provider === 'cloud' && chars > TRANSLATE_CONFIRM_CHARS) {
     const ok = await dialogApi.ask(
       'Translate ' + (whole ? 'the whole document' : 'the selection') + ' (' + fmtCount(chars) + ' characters) into ' + translateLangName(target) + '?\n\n' +
         'It is sent to Google Cloud Translation, which charges per character after the first 500,000 each month.',
@@ -83,7 +83,7 @@ async function translateInEditor(target) {
   flashFindStatus('Translating into ' + translateLangName(target) + '...', 120000);
   let result;
   try {
-    result = await invoke('cmd_translate', { text, target });
+    result = await invoke('cmd_translate', { text, target, provider });
   } catch (e) {
     flashFindStatus('');
     updateStatusBar();
@@ -107,6 +107,38 @@ async function translateInEditor(target) {
   const msg = 'Translated' + from + ' into ' + translateLangName(target) + ' (' + fmtCount(result.chars) + ' characters). Ctrl+Z undoes it.';
   flashFindStatus(msg, 6000);
   return msg;
+}
+
+async function translateKeySaved() {
+  try {
+    return !!(await invoke('cmd_translate_key_status'));
+  } catch (e) {
+    return false;
+  }
+}
+
+/** 'free' or 'cloud'. Before v2.0.3 Cloud was the only provider: whoever saved a key keeps it. */
+function translateProvider(hasKey) {
+  if (translateProviderUnset && hasKey) {
+    settings.translateProvider = 'cloud';
+    translateProviderUnset = false;
+    scheduleSessionSave();
+  }
+  return settings.translateProvider === 'cloud' ? 'cloud' : 'free';
+}
+
+/** The Translate items for the editor's own right-click menus (the spelling menu). */
+function translateMenuItems() {
+  return [
+    {
+      label: 'Translate',
+      icon: '文',
+      submenu: [
+        { label: 'Translate to ' + translateLangName(settings.translateTo || 'en'), action: () => translateInEditor(settings.translateTo || 'en') },
+        { label: 'Choose Language...', action: openTranslateChooser },
+      ],
+    },
+  ];
 }
 
 /* ---------- "Choose Language..." ---------- */
@@ -163,19 +195,31 @@ function translateChosen() {
 async function refreshTranslateKeyStatus() {
   const el = document.getElementById('translate-key-status');
   if (!el) return;
-  let has = false;
-  try {
-    has = await invoke('cmd_translate_key_status');
-  } catch (e) {
-    has = false;
-  }
+  const has = await translateKeySaved();
+  translateProvider(has);
   el.textContent = has ? 'A key is saved.' : 'No key saved yet.';
   document.getElementById('translate-key-remove').disabled = !has;
+  syncTranslateProviderUi();
+}
+
+/** Settings > Translate: the key fields only matter for Google Cloud. */
+function syncTranslateProviderUi() {
+  const sel = document.getElementById('translate-provider');
+  if (sel) sel.value = settings.translateProvider === 'cloud' ? 'cloud' : 'free';
+  const cloud = settings.translateProvider === 'cloud';
+  document.getElementById('translate-cloud').classList.toggle('hidden', !cloud);
+  document.getElementById('translate-free-note').classList.toggle('hidden', cloud);
 }
 
 async function saveTranslateKey(key) {
   try {
     await invoke('cmd_translate_key_set', { key });
+    if (key) {
+      // Saving a key means: use it.
+      settings.translateProvider = 'cloud';
+      translateProviderUnset = false;
+      scheduleSessionSave();
+    }
     document.getElementById('translate-key').value = '';
     await refreshTranslateKeyStatus();
     return true;
@@ -246,6 +290,7 @@ function initTranslate() {
     }
   });
   document.getElementById('translate-key-remove').addEventListener('click', () => saveTranslateKey(''));
+  document.getElementById('translate-provider').addEventListener('change', () => setTimeout(syncTranslateProviderUi, 0));
   document.getElementById('translate-help').addEventListener('click', (e) => {
     e.preventDefault();
     invoke('cmd_open_url', { url: 'https://cloud.google.com/translate/docs/setup' }).catch(() => {});
