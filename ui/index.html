@@ -224,6 +224,9 @@
           <div class="row"><span>Text colour</span> <span class="color"><input type="color" data-s="editColor" /><em data-theme-flag="editColor">theme</em><button data-clear="editColor" title="Follow the light/dark theme">Use theme</button></span></div>
           <div class="row"><span>Background</span> <span class="color"><input type="color" data-s="editBg" /><em data-theme-flag="editBg">theme</em><button data-clear="editBg" title="Follow the light/dark theme">Use theme</button></span></div>
           <p class="note">Syntax colours (code, Markdown markup) keep their own colours; the text colour applies to plain text.</p>
+          <label class="row">Text cursor <select data-s="caretStyle"><option value="line">Line</option><option value="block">Block</option><option value="underscore">Underscore</option></select></label>
+          <div class="row"><span>Text cursor colour</span> <span class="color"><input type="color" data-s="caretColor" /><em data-theme-flag="caretColor">theme</em><button data-clear="caretColor" title="Follow the light/dark theme">Use theme</button></span></div>
+          <div class="row"><span>Selection colour</span> <span class="color"><input type="color" data-s="selectionColor" /><em data-theme-flag="selectionColor">theme</em><button data-clear="selectionColor" title="Follow the light/dark theme (and the Windows accent colour)">Use theme</button></span></div>
         </section>
         <section>
           <h3>Preview</h3>
@@ -245,6 +248,13 @@
           <label class="check"><input type="checkbox" data-s="spellEnabled" /> Check spelling <kbd>F7</kbd></label>
           <label class="row">Language <select data-s="spellLang"><option value="en_GB">English (UK)</option><option value="en_US">English (US)</option></select></label>
           <label class="check" title="Log files are mostly written by programs (abbreviations, names, codes), so they are not checked unless this is on"><input type="checkbox" data-s="spellLogs" /> Spell-check log files</label>
+        </section>
+        <section>
+          <h3>Translate</h3>
+          <label class="row">Translate to <select data-s="translateTo" id="translate-to"></select></label>
+          <div class="row"><span>Google Cloud API key</span> <span class="translate-key"><input type="password" id="translate-key" autocomplete="off" spellcheck="false" placeholder="Paste your key" /><button id="translate-key-save">Save key</button><button id="translate-key-remove">Remove</button></span></div>
+          <p class="note" id="translate-key-status"></p>
+          <p class="note">Right-click in the editor &gt; Translate. The selected text (or the whole document, when nothing is selected) is sent to Google Cloud Translation with your own API key; Google charges per character after the first 500,000 each month. The key is stored encrypted for your Windows account. <a href="https://cloud.google.com/translate/docs/setup" id="translate-help">How to get a key</a></p>
         </section>
         <section data-tab="filetypes">
           <h3>Register file types</h3>
@@ -301,6 +311,17 @@
       <div class="modal-foot"><span class="spacer"></span><button id="goto-cancel">Cancel</button><button id="goto-go" class="primary">Go</button></div>
     </div>
   </div>
+  <div id="translate-dlg" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="translate-dlg-title">
+    <div class="modal-panel goto-panel translate-panel">
+      <div class="modal-head"><span id="translate-dlg-title">Translate to</span></div>
+      <div class="goto-body">
+        <input id="translate-filter" type="text" placeholder="Type to find a language" autocomplete="off" spellcheck="false" />
+        <select id="translate-list" size="12" aria-label="Language"></select>
+        <div id="translate-dlg-msg" class="goto-msg"></div>
+      </div>
+      <div class="modal-foot"><span class="spacer"></span><button id="translate-cancel">Cancel</button><button id="translate-go" class="primary">Translate</button></div>
+    </div>
+  </div>
   <!-- "Save changes?" with Yes / No / Cancel (Enter = Yes, Esc = Cancel). -->
   <div id="save-ask" class="modal hidden" role="alertdialog" aria-modal="true" aria-labelledby="save-ask-title" aria-describedby="save-ask-text">
     <div class="modal-panel save-ask-panel">
@@ -317,7 +338,7 @@
       </div>
       <div class="about-body">
         <img src="app-icon.png" alt="" width="64" height="64" />
-        <div class="about-name">notepad.md <span id="about-version">v2.0.1</span></div>
+        <div class="about-name">notepad.md <span id="about-version">v2.0.2</span></div>
         <a href="https://github.com/mccabedd/notepad.md" id="about-link">https://github.com/mccabedd/notepad.md</a>
         <div>Created by David McCabe</div>
         <button id="about-update" class="primary">Check for Updates</button>
@@ -366,6 +387,7 @@
   <script src="config-grammars.js"></script>
   <script src="hl-spans.js"></script>
   <script src="extras.js"></script>
+  <script src="translate.js"></script>
   <script src="renderer.js"></script>
   <script type="module" src="editor-codemirror.js"></script>
 </body>

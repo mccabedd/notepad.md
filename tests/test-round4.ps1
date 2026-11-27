@@ -68,7 +68,7 @@ J "toggleStatusBar(); return 1" | Out-Null
 # ---------- settings dialog ----------
 Send-Key @('CTRL') ',' 'Comma' 0xBC
 $r = J "return !settingsEl.classList.contains('hidden') + '|' + settingsEl.querySelectorAll('[data-s]').length"
-T 'Ctrl+, opens Settings' $r ($r -like 'true|3*')
+T 'Ctrl+, opens Settings' $r ($r -like 'true|*' -and [int]($r -split '\|')[1] -ge 30)
 $r = J @"
 const set = (k, v) => { const el = settingsEl.querySelector('[data-s=' + k + ']'); if (el.type === 'checkbox') el.checked = v; else el.value = v; el.dispatchEvent(new Event(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', {bubbles:true})); };
 set('editFont', 'Courier New'); set('editStyle', 'bold-italic'); set('editColor', '#112233'); set('editBg', '#fff8e0');

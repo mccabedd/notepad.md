@@ -3,7 +3,46 @@
  * certificates/keys. Loaded by the page and by highlight-worker.js, so it only uses the global hljs.
  * Colouring only: nothing here reads, runs or imports the files. */
 
+/**
+ * highlight.js colours any _text_ in Markdown as italic (and __text__ as bold), even inside a word:
+ * "test_test1_test2" showed "test1" in italics. Markdown itself (and the preview) only treats an
+ * underscore as emphasis at the edge of a word, so here underscore emphasis must start after a
+ * non-word character and end before one. Asterisks are left as they are (they do work inside words).
+ */
+function fixMarkdownUnderscores() {
+  const md = typeof hljs !== 'undefined' && hljs.getLanguage('markdown');
+  if (!md || !md.rawDefinition || md.npUnderscoresFixed) return;
+  const raw = md.rawDefinition;
+  hljs.registerLanguage('markdown', () => {
+    const def = raw();
+    const seen = new Set();
+    const walk = (m) => {
+      if (!m || typeof m !== 'object' || seen.has(m)) return;
+      seen.add(m);
+      if ((m.className === 'emphasis' || m.className === 'strong') && Array.isArray(m.variants)) {
+        for (const v of m.variants) {
+          const b = v.begin instanceof RegExp ? v.begin.source : v.begin;
+          // (Letters: \w plus everything from U+00C0 up, so accented and non-Latin words count too.
+          // No /u flag: highlight.js joins these into its own regex with its own flags.)
+          if (b === '_(?![_\\s])') {
+            v.begin = /(?<![\wÀ-￿])_(?![_\s])/;
+            v.end = /_(?![\wÀ-￿])/;
+          } else if (b === '_{2}(?!\\s)') {
+            v.begin = /(?<![\wÀ-￿])__(?!\s)/;
+            v.end = /__(?![\wÀ-￿])/;
+          }
+        }
+      }
+      for (const k of ['contains', 'variants']) if (Array.isArray(m[k])) m[k].forEach(walk);
+    };
+    walk(def);
+    return def;
+  });
+  hljs.getLanguage('markdown').npUnderscoresFixed = true;
+}
+
 function registerConfigLanguages() {
+  fixMarkdownUnderscores();
   if (typeof hljs === 'undefined' || hljs.getLanguage('dockerfile')) return;
   const HASH_COMMENT = { className: 'comment', begin: '#', end: '$', relevance: 0 };
   const LINE_HASH_COMMENT = { className: 'comment', begin: '^\\s*#', end: '$', relevance: 0 };

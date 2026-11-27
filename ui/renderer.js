@@ -3046,9 +3046,17 @@ async function restoreWindow() {
       } catch (e) {
         /* assume visible */
       }
-      await w.setSize(new dpi.PhysicalSize(g.w, g.h));
+      // Move first, then size: moving onto a monitor with different scaling (say 100% -> 125%)
+      // makes Windows rescale the window, which used to make it grow on every start.
       if (onScreen) await w.setPosition(new dpi.PhysicalPosition(g.x, g.y));
-      else await w.center();
+      await w.setSize(new dpi.PhysicalSize(g.w, g.h));
+      if (!onScreen) await w.center();
+      try {
+        const s = await w.innerSize();
+        if (s.width !== g.w || s.height !== g.h) await w.setSize(new dpi.PhysicalSize(g.w, g.h)); // rescaled late
+      } catch (e) {
+        /* keep what we have */
+      }
       if (g.maximized) await w.maximize();
     }
   } catch (e) {
@@ -4221,6 +4229,7 @@ async function init() {
   wireDragDrop();
   wireSettings();
   initExtras();
+  initTranslate();
   setRecentFiles(recentFiles);
   applyTheme();
   applySettings();

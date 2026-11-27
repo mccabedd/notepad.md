@@ -2464,7 +2464,8 @@ pre.plain-text {
 
 /* CodeMirror's problem margin (left of the line numbers): as the old gutter's markers. */
 .cm-np-diag .cm-gutterElement { width: 15px; position: relative; }
-.cm-editor-host:not(.np-diagcol) .cm-np-diag { display: none; }
+/* (!important: CodeMirror's own .cm-gutter rule is display: flex !important) */
+.cm-editor-host:not(.np-diagcol) .cm-np-diag { display: none !important; }
 .cm-np-diag .np-d {
   position: absolute;
   left: 2px;
@@ -2493,4 +2494,49 @@ pre.plain-text {
   color: var(--fg-muted);
   font: 13px/1.4 "Segoe UI", sans-serif;
   user-select: none;
+}
+
+/* ---------- text cursor shape (Settings > Editor > Text cursor) ----------
+ * CodeMirror draws its own cursor (.cm-cursor): reshape it. The textarea editor and the editable
+ * preview use the browser's caret-shape (where WebView2 supports it). */
+body.caret-block .cm-editor .cm-cursor,
+body.caret-underscore .cm-editor .cm-cursor {
+  border-left: none !important;
+  width: 1ch;
+  margin-left: 0;
+}
+body.caret-block .cm-editor .cm-cursor {
+  background: color-mix(in srgb, var(--caret, var(--accent)) 55%, transparent);
+}
+body.caret-underscore .cm-editor .cm-cursor {
+  border-bottom: 2px solid var(--caret, var(--accent));
+}
+body.caret-block textarea, body.caret-block .preview[contenteditable="true"] { caret-shape: block; }
+body.caret-underscore textarea, body.caret-underscore .preview[contenteditable="true"] { caret-shape: underscore; }
+
+/* ---------- Translate ---------- */
+.modal-body .translate-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.modal-body .translate-key input {
+  width: 170px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+}
+.translate-panel #translate-list {
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 2px;
+}
+.goto-msg#translate-dlg-msg {
+  color: var(--fg-muted);
 }

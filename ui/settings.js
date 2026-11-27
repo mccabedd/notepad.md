@@ -26,6 +26,10 @@ const DEFAULT_SETTINGS = {
   editStyle: 'normal',
   editColor: '', // '' = follow the theme
   editBg: '',
+  caretStyle: 'line', // the text cursor: 'line', 'block' or 'underscore'
+  caretColor: '', // '' = follow the theme
+  selectionColor: '', // '' = follow the theme (shown see-through, so the text stays readable)
+  translateTo: 'en', // right-click > Translate > "Translate to ..." (Google language code)
   previewFont: 'Segoe UI',
   previewStyle: 'normal',
   previewColor: '',
@@ -72,6 +76,8 @@ function loadSettings(saved) {
   settings.previewFontSize = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(settings.previewFontSize)));
   if (![2, 4, 8].includes(settings.tabSize)) settings.tabSize = 4;
   if (!['Green', 'Orange', 'Red'].includes(settings.bookmarkColour)) settings.bookmarkColour = 'Green';
+  if (!['line', 'block', 'underscore'].includes(settings.caretStyle)) settings.caretStyle = 'line';
+  if (!/^[a-zA-Z]{2,3}(-[A-Za-z]{2,4})?$/.test(settings.translateTo)) settings.translateTo = 'en';
   if (!['markdown', 'plaintext'].includes(settings.newTabFormat)) settings.newTabFormat = 'markdown';
   if (!['general', 'filetypes', 'validation'].includes(settings.settingsTab)) settings.settingsTab = 'general';
   settings.validateDelay = Math.min(5000, Math.max(200, Math.round(settings.validateDelay)));
@@ -142,6 +148,11 @@ function applySettings() {
   setVar('--preview-bg', COLOR_RE.test(settings.previewBg) ? settings.previewBg : '');
   setVar('--tab-size', String(settings.tabSize));
   setVar('--tab-font-size', settings.tabFontSize + 'px');
+  // The text cursor and the selection (editor and preview). Set on the page itself, so they win
+  // over the light/dark theme and the Windows accent colour.
+  setVar('--caret', COLOR_RE.test(settings.caretColor) ? settings.caretColor : '');
+  setVar('--selection', COLOR_RE.test(settings.selectionColor) ? 'color-mix(in srgb, ' + settings.selectionColor + ' 35%, transparent)' : '');
+  for (const s of ['block', 'underscore']) document.body.classList.toggle('caret-' + s, settings.caretStyle === s);
 
   document.body.classList.toggle('nowrap', !settings.wordWrap);
   editor.setAttribute('wrap', settings.wordWrap ? 'soft' : 'off');
@@ -255,7 +266,21 @@ function computedColor(prop, el) {
   // Shows the current theme colour in a colour box whose setting is "follow the theme".
   const c = getComputedStyle(el)[prop];
   const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c);
-  return m ? '#' + [m[1], m[2], m[3]].map((x) => Number(x).toString(16).padStart(2, '0')).join('') : '#000000';
+  if (m) return '#' + [m[1], m[2], m[3]].map((x) => Number(x).toString(16).padStart(2, '0')).join('');
+  // color-mix() results come back as color(srgb r g b / a), with 0-1 values
+  const f = /color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)/.exec(c);
+  return f ? '#' + [f[1], f[2], f[3]].map((x) => Math.round(Math.min(1, Number(x)) * 255).toString(16).padStart(2, '0')).join('') : '#000000';
+}
+
+/** A theme colour (CSS value, e.g. var(--caret)) as #rrggbb, for a colour box (see-through is ignored). */
+function themeColor(css) {
+  const probe = document.createElement('span');
+  probe.style.color = css;
+  probe.style.display = 'none';
+  document.body.appendChild(probe);
+  const hex = computedColor('color', probe);
+  probe.remove();
+  return hex;
 }
 
 function syncSettingsForm() {
@@ -266,7 +291,8 @@ function syncSettingsForm() {
     else if (el.type === 'color') {
       const custom = COLOR_RE.test(v);
       const sample = key.startsWith('edit') ? editorHighlight.parentElement : preview;
-      el.value = custom ? v : computedColor(key.endsWith('Bg') ? 'backgroundColor' : 'color', sample);
+      if (key === 'caretColor' || key === 'selectionColor') el.value = custom ? v : themeColor(key === 'caretColor' ? 'var(--caret, var(--accent))' : 'var(--selection)');
+      else el.value = custom ? v : computedColor(key.endsWith('Bg') ? 'backgroundColor' : 'color', sample);
       const flag = settingsEl.querySelector('[data-theme-flag="' + key + '"]');
       if (flag) flag.textContent = custom ? 'custom' : 'theme';
     } else el.value = String(v);
@@ -279,6 +305,7 @@ function openSettings() {
   settingsMessage('');
   syncSettingsForm();
   refreshFileTypeStatus();
+  if (typeof refreshTranslateKeyStatus === 'function') refreshTranslateKeyStatus();
   settingsEl.classList.remove('hidden');
   showSettingsTab(settings.settingsTab);
   const first = settingsEl.querySelector('.modal-body > section:not([hidden]) select, .modal-body > section:not([hidden]) input');

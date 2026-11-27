@@ -290,12 +290,15 @@ $r = J @"
 setLineNumbersVisible(true); setToolbarVisible(true); themeOverride='light'; applyTheme();
 advFrom.value='#2'; advFrom.dispatchEvent(new Event('input'));
 const w = window.__TAURI__.window.getCurrentWindow();
-await w.setSize(new window.__TAURI__.dpi.PhysicalSize(1000, 650)); await w.setPosition(new window.__TAURI__.dpi.PhysicalPosition(120, 90));
+// Stay on the monitor the window is on (moving it to another monitor with different scaling makes Windows resize it).
+const p0 = await w.outerPosition(); window.__winTarget = { x: p0.x + 30, y: p0.y + 20 };
+await w.setSize(new window.__TAURI__.dpi.PhysicalSize(1000, 650)); await w.setPosition(new window.__TAURI__.dpi.PhysicalPosition(window.__winTarget.x, window.__winTarget.y));
 await new Promise(r=>setTimeout(r,900));
 scheduleSessionSave(); await new Promise(r=>setTimeout(r,1000));
 return JSON.stringify(windowState);
 "@
 $before = J "return JSON.stringify({ln:lineNumbersVisible, tb:!toolbarEl.classList.contains('hidden'), theme:document.documentElement.dataset.theme, find:!findBar.classList.contains('hidden'), adv:advToggle.checked, from:advFrom.value, h:findState.paneHeight, active:tabTitle(getActive()), bm:JSON.stringify(getActive().bookmarks), fonts:docs.map(d=>d.fontSize).join(','), win:windowState})"
+$winTarget = J "return window.__winTarget.x + ',' + window.__winTarget.y"
 $hwnd = [KB]::MainWin([uint32]$script:proc.Id)
 [void][W32]::PostMessage($hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
 $exited = $script:proc.WaitForExit(6000)
@@ -305,7 +308,7 @@ Start-Sleep -Milliseconds 1500
 $after = J "return JSON.stringify({ln:lineNumbersVisible, tb:!toolbarEl.classList.contains('hidden'), theme:document.documentElement.dataset.theme, find:!findBar.classList.contains('hidden'), adv:advToggle.checked, from:advFrom.value, h:findState.paneHeight, active:tabTitle(getActive()), bm:JSON.stringify(getActive().bookmarks), fonts:docs.map(d=>d.fontSize).join(','), win:windowState})"
 T 'Restart restores line numbers, toolbar, theme, find/Advanced state, bookmarks, per-tab fonts, window' "exited=$exited`nbefore=$before`nafter =$after" ($exited -and $before -eq $after)
 $sz = J "const w=window.__TAURI__.window.getCurrentWindow(); const s=await w.innerSize(); const p=await w.outerPosition(); return s.width+'x'+s.height+'@'+p.x+','+p.y"
-T 'Window really reopened at saved size/position (no growth)' $sz ($sz -eq '1000x650@120,90')
+T 'Window really reopened at saved size/position (no growth)' $sz ($sz -eq "1000x650@$winTarget")
 Shot 'restored'
 
 Stop-App

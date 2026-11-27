@@ -6,6 +6,7 @@ mod linkmenu;
 mod printpdf;
 mod savedialog;
 mod system;
+mod translate;
 
 use std::fs;
 use std::path::PathBuf;
@@ -274,6 +275,7 @@ fn main() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .register_uri_scheme_protocol("localimg", |_ctx, req| instance::serve_local_image(&req))
         .manage(linkmenu::HoverLink(Mutex::new(None)))
+        .manage(linkmenu::TranslateMenu(Mutex::new(None)))
         .manage(AppState {
             initial_files: Mutex::new(initial_files),
             closing: AtomicBool::new(false),
@@ -298,6 +300,10 @@ fn main() {
             cmd_set_recent,
             printpdf::cmd_print_to_pdf,
             linkmenu::cmd_set_hover_link,
+            linkmenu::cmd_set_translate_menu,
+            translate::cmd_translate,
+            translate::cmd_translate_key_status,
+            translate::cmd_translate_key_set,
             system::cmd_app_info,
             system::cmd_register_file_types,
             system::cmd_unregister_file_types,
